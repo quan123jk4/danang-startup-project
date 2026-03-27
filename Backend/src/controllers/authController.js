@@ -24,14 +24,12 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 1. Tạo ngẫu nhiên mã OTP 6 số
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 2. Set thời gian hết hạn là 10 phút tính từ hiện tại
     const otpExpires = new Date();
     otpExpires.setMinutes(otpExpires.getMinutes() + 10);
 
-    // 3. Tạo user mới (với trạng thái chưa xác thực)
     const newUser = await User.create({
       email,
       password: hashedPassword,
@@ -65,7 +63,7 @@ exports.register = async (req, res) => {
     res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
-// 4. CHỨC NĂNG XÁC THỰC EMAIL BẰNG MÃ OTP
+// XÁC THỰC EMAIL BẰNG MÃ OTP
 exports.verifyEmail = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -151,8 +149,10 @@ exports.login = async (req, res) => {
       token,
       user: {
         id: user._id,
-        email: user.email,
         fullName: user.fullName,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        avatar: user.avatar,
         role: user.role,
       },
     });

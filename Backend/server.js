@@ -7,6 +7,7 @@ const mongoSanitize = require("express-mongo-sanitize");
 require("dotenv").config();
 
 const authRoutes = require("./src/routes/authRoutes");
+const userRoutes = require("./src/routes/userRoutes");
 
 const app = express();
 
@@ -30,12 +31,13 @@ mongoose
       " LỖI KẾT NỐI MONGODB. Vui lòng kiểm tra lại file .env:",
       err,
     );
-    process.exit(1); // Dừng server nếu không có Database
+    process.exit(1); // Dừ
   });
 
 // 3. KHAI BÁO CÁC TUYẾN ĐƯỜNG API (ROUTES)
 
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 
 app.get("/", (req, res) => {
   res.json({
