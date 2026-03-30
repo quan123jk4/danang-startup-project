@@ -41,8 +41,6 @@ mongoose
     process.exit(1);
   });
 
-//ROUTES
-
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/reviews", reviewRoutes);

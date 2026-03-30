@@ -19,9 +19,13 @@ exports.createReview = async (req, res) => {
     const avgRating =
       allReviews.reduce((acc, item) => item.rating + acc, 0) /
       allReviews.length;
+    allReviews.reduce((acc, item) => item.rating + acc, 0) / allReviews.length;
 
     await Place.findByIdAndUpdate(placeId, { rating: avgRating.toFixed(1) });
-
+    await Place.findByIdAndUpdate(placeId, {
+      rating: avgRating.toFixed(1),
+      numReviews: allReviews.length, // Lấy luôn độ dài của mảng review
+    });
     res.status(201).json({ success: true, data: review });
   } catch (error) {
     res.status(400).json({ message: "Lỗi gửi đánh giá", error: error.message });
