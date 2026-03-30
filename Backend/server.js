@@ -10,7 +10,9 @@ const authRoutes = require("./src/routes/authRoutes");
 const userRoutes = require("./src/routes/userRoutes");
 const reviewRoutes = require("./src/routes/reviewRoutes");
 const placeRoutes = require("./src/routes/placeRoutes");
+
 const app = express();
+const Place = require("../Backend/src/Models/Place");
 
 app.use(helmet()); // Che giấu thông tin server
 app.use(cors()); // Cho phép Frontend gọi API
@@ -26,7 +28,11 @@ app.use("/api/", apiLimiter);
 
 mongoose
   .connect(process.env.DATABASE_URL)
-  .then(() => console.log("KẾT NỐI MONGODB BẰNG MONGOOSE THÀNH CÔNG RỰC RỠ!"))
+  .then(async () => {
+    console.log("Kết nối Database thành công!");
+    await Place.syncIndexes();
+    console.log("Đã đồng bộ Index 2dsphere thành công!");
+  })
   .catch((err) => {
     console.error(
       " LỖI KẾT NỐI MONGODB. Vui lòng kiểm tra lại file .env:",
@@ -37,10 +43,10 @@ mongoose
 
 //ROUTES
 
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/reviews", reviewRoutes);
-app.use("/api/places", placeRoutes);
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/reviews", reviewRoutes);
+app.use("/api/v1/places", placeRoutes);
 
 app.get("/", (req, res) => {
   res.json({

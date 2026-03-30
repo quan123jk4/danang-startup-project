@@ -29,3 +29,16 @@ exports.protect = async (req, res, next) => {
     res.status(401).json({ message: "Token không hợp lệ hoặc đã hết hạn!" });
   }
 };
+exports.authorize = (...roles) => {
+  return (req, res, next) => {
+    const allowedRoles = roles.map((r) => r.toLowerCase());
+    const userRole = req.user.role.toLowerCase().trim();
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: `Lỗi phân quyền: Quyền [${userRole}] không được phép thực hiện hành động này!`,
+      });
+    }
+    next();
+  };
+};

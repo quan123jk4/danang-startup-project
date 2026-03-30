@@ -33,10 +33,21 @@ const placeSchema = new mongoose.Schema(
 
     // 2. TỌA ĐỘ (Dùng cho Map & AI tính toán lộ trình)
     location: {
-      lat: { type: Number, required: true },
-      lng: { type: Number, required: true },
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // Lưu ý: [Kinh độ (lng), Vĩ độ (lat)] - Ngược với Google Maps
+        required: true,
+      },
     },
 
+    hasSpecialEvent: {
+      type: Boolean,
+      default: false,
+    },
     // 3. GIÁ CẢ & DỊCH VỤ
     price: { type: Number, default: 0 },
     priceRange: {
@@ -44,6 +55,10 @@ const placeSchema = new mongoose.Schema(
       enum: ["Free", "Low", "Medium", "High"],
       default: "Medium",
     },
+    historyInfo: {
+      type: String,
+    },
+    highlights: [{ type: String }],
     openingHours: { type: String },
 
     // 4. HỆ THỐNG ĐÁNH GIÁ (Update tự động từ Review Controller)
@@ -61,7 +76,7 @@ const placeSchema = new mongoose.Schema(
     // 5. DỮ LIỆU ĐẶC BIỆT ĐỂ TRAIN AI (Vô cùng quan trọng)
     averageTimeSpent: {
       type: Number,
-      default: 60, // Đơn vị: Phút. AI dùng để cộng dồn lịch trình.
+      default: 60,
       help: "Thời gian khách thường ở lại đây (ví dụ: 120 cho Bà Nà, 30 cho Cầu Rồng)",
     },
     tags: [
@@ -86,5 +101,5 @@ const placeSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
-
+placeSchema.index({ location: "2dsphere" });
 module.exports = mongoose.model("Place", placeSchema);
