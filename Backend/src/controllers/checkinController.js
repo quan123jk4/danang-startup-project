@@ -1,4 +1,4 @@
-const CheckIn = require("../Models/CheckIn");
+const CheckIn = require("../Models/Checkin");
 const Place = require("../Models/Place");
 const User = require("../Models/User");
 
@@ -30,8 +30,6 @@ exports.createCheckIn = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Không tìm thấy địa điểm" });
     }
-
-    // LỚP BẢO VỆ: Kiểm tra xem Database đã có cấu trúc GeoJSON chưa
     if (
       !place.location ||
       !place.location.coordinates ||
@@ -44,14 +42,11 @@ exports.createCheckIn = async (req, res) => {
       });
     }
 
-    // LẤY TỌA ĐỘ TỪ MẢNG GEOJSON (Lưu ý: Kinh độ index 0, Vĩ độ index 1)
     const placeLng = place.location.coordinates[0];
     const placeLat = place.location.coordinates[1];
 
-    // 2. Kiểm tra khoảng cách
     const distance = getDistance(userLat, userLng, placeLat, placeLng);
 
-    // BẢO MẬT: Chặn khoảng cách > 150m và chặn luôn lỗi NaN
     if (isNaN(distance) || distance > 150) {
       return res.status(400).json({
         success: false,
@@ -76,13 +71,10 @@ exports.createCheckIn = async (req, res) => {
       });
     }
 
-    // 4. Tính toán điểm thưởng (Gamification)
     let points = 10; // Điểm cơ bản
     if (caption || (media && media.length > 0)) {
       points += 20; // Bonus
     }
-
-    // 5. Lưu lịch sử Check-in (Đúng tên trường Database của bạn)
     const newCheckIn = await CheckIn.create({
       userId: userId,
       placeId: placeId,
@@ -92,7 +84,6 @@ exports.createCheckIn = async (req, res) => {
       earnedPoints: points,
     });
 
-    // 6. Cộng điểm vào tài khoản User
     await User.findByIdAndUpdate(userId, {
       $inc: { points: points },
     });

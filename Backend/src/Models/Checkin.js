@@ -2,18 +2,34 @@ const mongoose = require("mongoose");
 
 const checkInSchema = new mongoose.Schema(
   {
-    userId: {
+    user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    placeId: {
+    place: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Place",
       required: true,
     },
-    earnedPoints: { type: Number, required: true },
-    gpsValidation: { type: Boolean, default: true }, // Xác nhận vị trí khách có thực sự ở quán không
+    userLocation: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+    },
+    caption: {
+      type: String,
+      default: "",
+    },
+    media: [
+      {
+        type: String,
+      },
+    ],
+    pointsEarned: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
   },
   { timestamps: true },
 );

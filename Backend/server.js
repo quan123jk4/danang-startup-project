@@ -11,6 +11,7 @@ const userRoutes = require("./src/routes/userRoutes");
 const reviewRoutes = require("./src/routes/reviewRoutes");
 const placeRoutes = require("./src/routes/placeRoutes");
 const checkinRoutes = require("./src/routes/checkinRoutes");
+const voucherRoutes = require("./src/routes/voucherRoutes");
 
 const app = express();
 const Place = require("../Backend/src/Models/Place");
@@ -47,6 +48,7 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/reviews", reviewRoutes);
 app.use("/api/v1/places", placeRoutes);
 app.use("/api/v1/checkin", checkinRoutes);
+app.use("/api/v1/voucher", voucherRoutes);
 
 app.get("/", (req, res) => {
   res.json({
