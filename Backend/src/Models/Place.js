@@ -3,7 +3,6 @@ const { escapeRegex, removeVietnameseTones } = require("../utils/searchHelper");
 
 const placeSchema = new mongoose.Schema(
   {
-    // 1. THÔNG TIN HIỂN THỊ (Use Case: Xem chi tiết)
     name: {
       type: String,
       required: [true, "Tên địa điểm là bắt buộc"],
@@ -32,7 +31,6 @@ const placeSchema = new mongoose.Schema(
       ],
     },
 
-    // 2. TỌA ĐỘ (Dùng cho Map & AI tính toán lộ trình)
     location: {
       type: {
         type: String,
@@ -40,7 +38,7 @@ const placeSchema = new mongoose.Schema(
         default: "Point",
       },
       coordinates: {
-        type: [Number], // Lưu ý: [Kinh độ (lng), Vĩ độ (lat)] - Ngược với Google Maps
+        type: [Number],
         required: true,
       },
     },
@@ -49,7 +47,7 @@ const placeSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // 3. GIÁ CẢ & DỊCH VỤ
+
     price: { type: Number, default: 0 },
     priceRange: {
       type: String,
@@ -62,7 +60,6 @@ const placeSchema = new mongoose.Schema(
     highlights: [{ type: String }],
     openingHours: { type: String },
 
-    // 4. HỆ THỐNG ĐÁNH GIÁ (Update tự động từ Review Controller)
     rating: {
       type: Number,
       default: 0,
@@ -73,8 +70,6 @@ const placeSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-
-    // 5. DỮ LIỆU ĐẶC BIỆT ĐỂ TRAIN AI (Vô cùng quan trọng)
     averageTimeSpent: {
       type: Number,
       default: 60,
@@ -95,11 +90,11 @@ const placeSchema = new mongoose.Schema(
     ],
     popularityScore: {
       type: Number,
-      default: 0, // AI sẽ ưu tiên gợi ý nơi có score cao
+      default: 0,
     },
     searchString: {
       type: String,
-      select: false, // Giấu đi không cho Frontend thấy
+      select: false,
     },
   },
   {

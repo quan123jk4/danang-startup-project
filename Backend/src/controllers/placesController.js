@@ -1,12 +1,11 @@
 const Place = require("../Models/Place");
 const Review = require("../Models/Review");
 const { escapeRegex, removeVietnameseTones } = require("../utils/searchHelper");
-
+const User = require("../Models/User");
 // 1. [POST] Tạo địa điểm mới
 exports.createPlace = async (req, res) => {
   try {
     const data = req.body;
-
     // 1. LỚP BẢO VỆ SỐ 1: Kiểm tra xem có cấu trúc location chuẩn GeoJSON chưa
     if (
       !data.location ||
@@ -196,5 +195,55 @@ exports.searchPlaces = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Lỗi hệ thống", error: error.message });
+  }
+};
+
+exports.getPlaceInsights = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user ? req.user.id : null;
+
+    const place = await Place.findById(id);
+    if (!place) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy địa điểm" });
+    }
+    let priceTier = "Chưa xác định";
+    const price = place.price || 0;
+
+    if (price > 0) {
+      if (price < 100000) priceTier = "Rẻ";
+      else if (price <= 300000) priceTier = "Trung bình";
+      else priceTier = "Cao cấp";
+    }
+    let budgetAdvice = `Mức giá tham khảo: ${price.toLocaleString("vi-VN")} VNĐ. Đây là mức giá ${priceTier}.`;
+    if (userId) {
+      const user = await User.findById(userId);
+      if (
+        user &&
+        user.targetBudget !== null &&
+        user.targetBudget !== undefined
+      ) {
+        const gap = price - user.targetBudget;
+
+        if (gap > 0) {
+          budgetAdvice = `Ê Quân, khoan! Quán này giá ${price.toLocaleString("vi-VN")}đ lận, cao hơn ngân sách ${user.targetBudget.toLocaleString("vi-VN")}đ cậu đặt ra ${gap.toLocaleString("vi-VN")}đ đấy. Suy nghĩ kỹ nhé!`;
+        } else {
+          budgetAdvice = `Tuyệt vời! Mức giá này hoàn toàn nằm trong ngân sách ${user.targetBudget.toLocaleString("vi-VN")}đ của bạn. Triển thôi!`;
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        price,
+        priceTier,
+        budgetAdvice,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

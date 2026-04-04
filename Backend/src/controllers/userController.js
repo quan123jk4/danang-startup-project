@@ -11,19 +11,31 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const { fullName, phoneNumber, avatar } = req.body;
+    const { fullName, phoneNumber, avatar, targetBudget } = req.body;
+    if (
+      targetBudget !== undefined &&
+      (typeof targetBudget !== "number" || targetBudget < 0)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Ngân sách mục tiêu phải là một số lớn hơn hoặc bằng 0.",
+      });
+    }
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      { fullName, phoneNumber, avatar },
+      { fullName, phoneNumber, avatar, targetBudget },
       { new: true, runValidators: true },
     ).select("-password");
 
     res.status(200).json({
+      success: true,
       message: "Cập nhật hồ sơ thành công!",
       data: updatedUser,
     });
   } catch (error) {
-    res.status(500).json({ message: "Lỗi server", error: error.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Lỗi server", error: error.message });
   }
 };
 //Delete
