@@ -7,8 +7,6 @@ exports.redeemVoucher = async (req, res) => {
   try {
     const { voucherId } = req.body;
     const userId = req.user.id;
-
-    // 1. Kiểm tra Voucher có tồn tại và đang bật không
     const voucher = await Voucher.findById(voucherId);
     if (!voucher || !voucher.isActive) {
       return res
@@ -19,7 +17,6 @@ exports.redeemVoucher = async (req, res) => {
         });
     }
 
-    // 2. Kiểm tra điểm của User
     const user = await User.findById(userId);
     if (user.points < voucher.pointsRequired) {
       return res.status(400).json({
@@ -28,11 +25,8 @@ exports.redeemVoucher = async (req, res) => {
       });
     }
 
-    // 3. Trừ điểm của User và Lưu lại vào DB
     user.points -= voucher.pointsRequired;
     await user.save();
-
-    // 4. Hàm tự động sinh mã Code ngẫu nhiên (VD: DN-A8F9K2)
     const generateCode = () => {
       const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
       let code = "DN-";
@@ -42,15 +36,11 @@ exports.redeemVoucher = async (req, res) => {
       return code;
     };
     const uniqueCode = generateCode();
-
-    // 5. Lưu lịch sử giao dịch đổi Voucher
     const newRedemption = await VoucherRedemption.create({
       user: userId,
       voucher: voucherId,
       code: uniqueCode,
     });
-
-    // 6. Trả kết quả về cho Frontend / Postman
     res.status(200).json({
       success: true,
       message: "Đổi Voucher thành công! Vui lòng đưa mã này cho thu ngân.",
@@ -68,7 +58,6 @@ exports.redeemVoucher = async (req, res) => {
   }
 };
 
-// [POST] API phụ: Dành cho Admin tạo Voucher mới vào kho
 exports.createVoucher = async (req, res) => {
   try {
     const newVoucher = await Voucher.create(req.body);

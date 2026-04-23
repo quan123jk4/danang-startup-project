@@ -1,10 +1,10 @@
+// File: controllers/checkinController.js
 const CheckIn = require("../Models/Checkin");
-const Place = require("../Models/Place");
+const { Place } = require("../Models/Place");
 const User = require("../Models/User");
 
-// Hàm tính khoảng cách giữa 2 tọa độ GPS (Công thức Haversine) - Trả về đơn vị: Mét
 const getDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371e3; // Bán kính Trái Đất (mét)
+  const R = 6371e3;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -17,19 +17,20 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-// [POST] Xử lý Check-in
 exports.createCheckIn = async (req, res) => {
   try {
-    const { placeId, userLat, userLng, caption, media } = req.body;
+    const { placeId, userLat, userLng, caption, media, rating } = req.body;
     const userId = req.user.id;
 
     // 1. Tìm địa điểm để lấy tọa độ gốc
     const place = await Place.findById(placeId);
     if (!place) {
+      // BẮT BUỘC PHẢI CÓ CHỮ "return" ĐỂ DỪNG CODE
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy địa điểm" });
     }
+
     if (
       !place.location ||
       !place.location.coordinates ||
@@ -42,9 +43,9 @@ exports.createCheckIn = async (req, res) => {
       });
     }
 
+    // 2. Tính toán khoảng cách
     const placeLng = place.location.coordinates[0];
     const placeLat = place.location.coordinates[1];
-
     const distance = getDistance(userLat, userLng, placeLat, placeLng);
 
     if (isNaN(distance) || distance > 150) {
@@ -58,8 +59,8 @@ exports.createCheckIn = async (req, res) => {
     // 3. Kiểm tra giới hạn thời gian (Rules: 1 lần/tuần/1 địa điểm)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const existingCheckIn = await CheckIn.findOne({
-      userId: userId,
-      placeId: placeId,
+      user: userId,
+      place: placeId,
       createdAt: { $gte: sevenDaysAgo },
     });
 
@@ -71,31 +72,48 @@ exports.createCheckIn = async (req, res) => {
       });
     }
 
+    // 4. LOGIC TÍNH ĐIỂM BONUS MỚI (Có tính rating)
     let points = 10; // Điểm cơ bản
-    if (caption || (media && media.length > 0)) {
-      points += 20; // Bonus
+    if (caption && media && media.length > 0 && rating) {
+      points += 40; // Bonus max ping 40 điểm -> Tổng 50
+    } else if (caption || (media && media.length > 0) || rating) {
+      points += 10; // Bonus nhẹ 10 điểm -> Tổng 20
     }
+
+    // 5. Lưu vào Database
     const newCheckIn = await CheckIn.create({
-      userId: userId,
-      placeId: placeId,
+      user: userId,
+      place: placeId,
       userLocation: { lat: userLat, lng: userLng },
       caption,
       media,
-      earnedPoints: points,
+      rating: rating || 5,
+      pointsEarned: points,
     });
 
+    // Cập nhật điểm cho User
     await User.findByIdAndUpdate(userId, {
       $inc: { points: points },
     });
 
-    res.status(201).json({
+    // TRẢ VỀ KẾT QUẢ THÀNH CÔNG VÀ KẾT THÚC
+    return res.status(201).json({
       success: true,
       message: `Check-in thành công! Bạn nhận được ${points} điểm thưởng.`,
       data: newCheckIn,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: "Lỗi hệ thống", error: error.message });
+    console.error("🚨 CHI TIẾT LỖI CHECK-IN:", error);
+
+    // LÁ CHẮN CHỐNG CRASH: Chỉ gửi lỗi 500 nếu như trước đó chưa gửi response nào
+    if (!res.headersSent) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message: "Lỗi hệ thống",
+          error: error.message,
+        });
+    }
   }
 };

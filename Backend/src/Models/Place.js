@@ -1,109 +1,86 @@
 const mongoose = require("mongoose");
-const { escapeRegex, removeVietnameseTones } = require("../utils/searchHelper");
 
+// 1. PLACE SCHEMA (Bảng cha)
 const placeSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: [true, "Tên địa điểm là bắt buộc"],
-      unique: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      required: [true, "Mô tả không được để trống"],
-    },
-    address: {
-      type: String,
-      required: [true, "Địa chỉ là bắt buộc"],
-    },
-    images: [{ type: String }],
-    category: {
-      type: String,
-      required: true,
-      enum: [
-        "Restaurant",
-        "Hotel",
-        "Attraction",
-        "Beach",
-        "Mountain",
-        "Culture",
-      ],
-    },
-
-    location: {
-      type: {
-        type: String,
-        enum: ["Point"],
-        default: "Point",
-      },
-      coordinates: {
-        type: [Number],
-        required: true,
-      },
-    },
-
-    hasSpecialEvent: {
-      type: Boolean,
-      default: false,
-    },
-
-    price: { type: Number, default: 0 },
-    priceRange: {
-      type: String,
-      enum: ["Free", "Low", "Medium", "High"],
-      default: "Medium",
-    },
-    historyInfo: {
-      type: String,
-    },
-    highlights: [{ type: String }],
-    openingHours: { type: String },
-
+    name: { type: String, required: true },
+    address: { type: String },
+    phone: { type: String },
+    minPrice: { type: Number },
+    maxPrice: { type: Number },
     rating: {
       type: Number,
-      default: 0,
-      min: 0,
-      max: 5,
+      min: [1, "Tối thiểu 1 sao"],
+      max: [5, "Tối đa 5 sao"],
+      default: 5,
     },
-    numReviews: {
-      type: Number,
-      default: 0,
-    },
-    averageTimeSpent: {
-      type: Number,
-      default: 60,
-      help: "Thời gian khách thường ở lại đây (ví dụ: 120 cho Bà Nà, 30 cho Cầu Rồng)",
-    },
-    tags: [
-      {
-        type: String,
-        help: "Ví dụ: ['yên tĩnh', 'sống ảo', 'lịch sử', 'gia đình']",
-      },
-    ],
-    suitableWeather: [
-      {
-        type: String,
-        enum: ["Sunny", "Rainy", "All"],
-        default: "All",
-      },
-    ],
-    popularityScore: {
-      type: Number,
-      default: 0,
-    },
-    searchString: {
-      type: String,
-      select: false,
+    numReview: { type: Number, default: 0 },
+    description: { type: String },
+    location: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], required: true }, // [Lng, Lat]
     },
   },
   {
+    discriminatorKey: "category",
+    collection: "places",
     timestamps: true,
   },
 );
+
 placeSchema.index({ location: "2dsphere" });
-placeSchema.pre("save", async function () {
-  const combinedText = `${this.name} ${this.description}`;
-  this.searchString = removeVietnameseTones(combinedText);
-});
-module.exports = mongoose.model("Place", placeSchema);
+const Place = mongoose.model("Place", placeSchema);
+
+// 2. DISCRIMINATORS (Các bảng con)
+const Hotel = Place.discriminator(
+  "hotel",
+  new mongoose.Schema({
+    amenities: [{ type: String }],
+  }),
+);
+
+const Restaurant = Place.discriminator(
+  "restaurant",
+  new mongoose.Schema({
+    cuisineType: { type: String },
+    serviceType: { type: String },
+  }),
+);
+
+const Attraction = Place.discriminator(
+  "attraction",
+  new mongoose.Schema({
+    ticketPrice: { type: Number },
+    tourDuration: { type: String },
+    activities: [{ type: String }],
+    historicalInfo: { type: String },
+    rules: { type: String },
+  }),
+);
+
+const Entertainment = Place.discriminator(
+  "entertainment",
+  new mongoose.Schema({
+    activityType: { type: String },
+    eventSchedule: { type: String },
+  }),
+);
+
+// 3. MENU SCHEMA (Liên kết với Restaurant)
+const menuSchema = new mongoose.Schema(
+  {
+    restaurant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Place", // Tham chiếu đến ID trong collection places
+      required: true,
+    },
+    itemName: { type: String, required: true },
+    price: { type: Number, required: true },
+    description: { type: String },
+  },
+  { timestamps: true },
+);
+
+const Menu = mongoose.model("Menu", menuSchema);
+
+module.exports = { Place, Hotel, Restaurant, Attraction, Entertainment, Menu };

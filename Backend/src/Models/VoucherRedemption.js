@@ -11,7 +11,7 @@ const redemptionSchema = new mongoose.Schema(
     code: { type: String, required: true, unique: true }, // Mã code sinh ra để đưa cho thu ngân
     status: {
       type: String,
-      enum: ["Unused", "Used"], // Trạng thái: Chưa sử dụng hoặc Đã sử dụng
+      enum: ["Unused", "Used"],
       default: "Unused",
     },
   },

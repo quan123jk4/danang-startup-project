@@ -14,11 +14,12 @@ const checkinRoutes = require("./src/routes/checkinRoutes");
 const voucherRoutes = require("./src/routes/voucherRoutes");
 
 const app = express();
-const Place = require("../Backend/src/Models/Place");
+const { Place } = require("../Backend/src/Models/Place");
 
 app.use(helmet()); // Che giấu thông tin server
 app.use(cors()); // Cho phép Frontend gọi API
-app.use(express.json({ limit: "10kb" })); // Giới hạn dung lượng request gửi lên
+app.use(express.json({ limit: "10mb" })); // Tăng giới hạn JSON lên 10MB
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(mongoSanitize()); // Chống hack Database
 
 const apiLimiter = rateLimit({

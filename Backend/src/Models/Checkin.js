@@ -30,6 +30,7 @@ const checkInSchema = new mongoose.Schema(
       required: true,
       default: 0,
     },
+    rating: { type: Number },
   },
   { timestamps: true },
 );
