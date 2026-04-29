@@ -14,4 +14,5 @@ router.patch(
   userController.updateUserRole,
 );
 router.get("/", protect, authorize("ADMIN"), userController.getAllUsers);
+router.patch("/:id/lock", protect, userController.toggleLockUser);
 module.exports = router;

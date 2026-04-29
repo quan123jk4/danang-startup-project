@@ -72,11 +72,9 @@ exports.verifyEmail = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
     }
     if (!user.isVerified) {
-      return res
-        .status(403)
-        .json({
-          message: "Vui lòng xác thực email bằng OTP trước khi đăng nhập!",
-        });
+      return res.status(403).json({
+        message: "Vui lòng xác thực email bằng OTP trước khi đăng nhập!",
+      });
     }
     if (user.isVerified) {
       return res
@@ -109,22 +107,40 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
+
     if (!user) {
       return res.status(404).json({ message: "Tài khoản không tồn tại!" });
     }
+
+    // ==========================================
+    // KIỂM TRA KHÓA TÀI KHOẢN (PHÂN LOẠI RÕ RÀNG)
+    // ==========================================
     if (user.isLocked) {
-      return res.status(403).json({
-        message:
-          "Tài khoản đã bị khóa do nhập sai quá nhiều lần. Vui lòng liên hệ Admin!",
-      });
+      // Trường hợp 1: Bị khóa do nhập sai quá 5 lần
+      if (user.failedLoginAttempts >= 5) {
+        return res.status(403).json({
+          message:
+            "Tài khoản tạm khóa do nhập sai mật khẩu quá 5 lần. Vui lòng lấy lại mật khẩu hoặc liên hệ hỗ trợ!",
+        });
+      }
+      // Trường hợp 2: Bị khóa bởi Admin
+      else {
+        return res.status(403).json({
+          message:
+            "Tài khoản của bạn đã bị khóa bởi Quản trị viên. Vui lòng liên hệ Danasoul để được hỗ trợ!",
+        });
+      }
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       user.failedLoginAttempts += 1;
+
+      // Nếu chạm mốc 5 lần thì khóa tài khoản
       if (user.failedLoginAttempts >= 5) {
         user.isLocked = true;
       }
+
       await user.save();
 
       return res.status(400).json({
@@ -132,6 +148,7 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Đăng nhập thành công thì reset lại số lần nhập sai về 0
     user.failedLoginAttempts = 0;
     await user.save();
 

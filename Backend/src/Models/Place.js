@@ -20,6 +20,8 @@ const placeSchema = new mongoose.Schema(
       type: { type: String, enum: ["Point"], default: "Point" },
       coordinates: { type: [Number], required: true }, // [Lng, Lat]
     },
+    tags: [{ type: String }], // Lưu từ khóa AI
+    images: [{ type: String }], // LƯU LINK ẢNH (Dạng mảng để dễ mở rộng sau này)
   },
   {
     discriminatorKey: "category",

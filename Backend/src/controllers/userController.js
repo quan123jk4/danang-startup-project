@@ -118,3 +118,45 @@ exports.getAllUsers = async (req, res) => {
     });
   }
 };
+exports.toggleLockUser = async (req, res) => {
+  try {
+    // 1. Tìm user cần khóa trong Database
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy người dùng!" });
+    }
+
+    // 2. Chống tự hủy: Không cho phép Admin tự khóa chính mình hoặc Admin khác
+    if (user.role === "ADMIN" || user.role === "SUPERADMIN") {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không thể khóa tài khoản của Quản trị viên!",
+      });
+    }
+
+    // 3. Đảo ngược trạng thái: Đang false thành true (Khóa), đang true thành false (Mở)
+    user.isLocked = !user.isLocked;
+    if (!user.isLocked) {
+      user.failedLoginAttempts = 0;
+    }
+    await user.save();
+
+    // 4. Trả kết quả về cho Frontend
+    res.status(200).json({
+      success: true,
+      message: user.isLocked
+        ? "Đã KHÓA tài khoản thành công!"
+        : "Đã MỞ KHÓA tài khoản thành công!",
+      isLocked: user.isLocked,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống",
+      error: error.message,
+    });
+  }
+};

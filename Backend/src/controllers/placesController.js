@@ -5,16 +5,20 @@ const {
   Attraction,
   Entertainment,
 } = require("../Models/Place");
-const Review = require("../Models/Review"); // Chú ý: Đảm bảo ông có Model Review
+const Review = require("../Models/Review");
 const User = require("../Models/User");
 const { escapeRegex, removeVietnameseTones } = require("../utils/searchHelper");
 
-// 1. [POST] Tạo địa điểm mới (Đã update theo Discriminator)
+// 1. [POST] Tạo địa điểm mới
 exports.createPlace = async (req, res) => {
   try {
     const data = req.body;
 
-    // LỚP BẢO VỆ 1: Kiểm tra chuẩn GeoJSON cho location
+    // Chuyển link ảnh đơn (từ Frontend) thành mảng images để lưu trữ chuẩn
+    if (data.image && typeof data.image === "string") {
+      data.images = [data.image];
+    }
+
     if (
       !data.location ||
       data.location.type !== "Point" ||
@@ -25,7 +29,7 @@ exports.createPlace = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Lỗi tạo địa điểm: Bắt buộc phải cung cấp location theo chuẩn GeoJSON với coordinates là mảng [Kinh độ, Vĩ độ]!",
+          "Lỗi: Bắt buộc phải cung cấp location theo chuẩn GeoJSON với coordinates là mảng [Kinh độ, Vĩ độ]!",
       });
     }
 
@@ -37,17 +41,14 @@ exports.createPlace = async (req, res) => {
       });
     }
 
-    // LỚP BẢO VỆ 2: Phải có category để biết tạo bằng Model con nào
     if (!data.category) {
       return res.status(400).json({
         success: false,
-        message:
-          "Lỗi dữ liệu: Bắt buộc phải cung cấp trường 'category' (hotel, restaurant, attraction, entertainment)",
+        message: "Lỗi dữ liệu: Bắt buộc phải cung cấp trường 'category'",
       });
     }
 
     let newPlace;
-    // RẼ NHÁNH TẠO DỮ LIỆU THEO MODEL CON
     switch (data.category.toLowerCase()) {
       case "hotel":
         newPlace = await Hotel.create(data);
@@ -63,7 +64,6 @@ exports.createPlace = async (req, res) => {
         newPlace = await Entertainment.create(data);
         break;
       default:
-        // Trả về lỗi nếu gửi lên category lạ (vd: abc)
         return res.status(400).json({
           success: false,
           message: `Lỗi dữ liệu: Danh mục '${data.category}' không hợp lệ.`,
@@ -86,18 +86,13 @@ exports.getAllPlaces = async (req, res) => {
     const { keyword, category, lat, lng } = req.query;
     let query = {};
 
-    if (keyword) {
-      query.name = { $regex: keyword, $options: "i" };
-    }
-    if (category) {
-      query.category = category.toLowerCase();
-    }
+    if (keyword) query.name = { $regex: keyword, $options: "i" };
+    if (category) query.category = category.toLowerCase();
 
     let userLat = parseFloat(lat);
     let userLng = parseFloat(lng);
     let isDefaultLocation = false;
 
-    // Alternative Flow: Mất định vị -> Lấy tọa độ Cầu Rồng (Đà Nẵng) làm tâm
     if (!userLat || !userLng || isNaN(userLat) || isNaN(userLng)) {
       userLat = 16.0614;
       userLng = 108.2272;
@@ -114,15 +109,12 @@ exports.getAllPlaces = async (req, res) => {
       },
     };
 
-    let places = await Place.find(query)
-      .sort({ rating: -1 }) // Sort theo rating cao nhất
-      .limit(20);
+    let places = await Place.find(query).sort({ rating: -1 }).limit(20);
 
     if (places.length === 0) {
       const suggestions = await Place.find({ rating: { $gte: 4 } })
         .sort({ rating: -1 })
         .limit(5);
-
       return res.status(200).json({
         success: true,
         message: "Không tìm thấy kết quả phù hợp. Gợi ý các địa điểm nổi bật:",
@@ -145,7 +137,6 @@ exports.getAllPlaces = async (req, res) => {
 // 3. [GET] Xem chi tiết địa điểm
 exports.getPlaceDetail = async (req, res) => {
   try {
-    // Truy vấn bằng bảng cha Place, nó sẽ tự động join trả về cả trường của bảng con
     const place = await Place.findById(req.params.id);
 
     if (!place) {
@@ -155,7 +146,6 @@ exports.getPlaceDetail = async (req, res) => {
       });
     }
 
-    // Khởi tạo Object chứa dữ liệu cơ bản từ Bảng Cha
     let responseData = {
       _id: place._id,
       name: place.name,
@@ -168,11 +158,13 @@ exports.getPlaceDetail = async (req, res) => {
       phone: place.phone,
       minPrice: place.minPrice,
       maxPrice: place.maxPrice,
+      images: place.images, // Kéo mảng ảnh ra
+      tags: place.tags, // Kéo tags ra
     };
 
-    // Rẽ nhánh lấy thêm data TÙY THUỘC VÀO MODEL CON (Discriminator)
     if (place.category === "attraction") {
       responseData.ticketPrice = place.ticketPrice;
+      responseData.tourDuration = place.tourDuration; // Thêm trường này
       responseData.activities = place.activities;
       responseData.historicalInfo = place.historicalInfo;
       responseData.rules = place.rules;
@@ -186,7 +178,6 @@ exports.getPlaceDetail = async (req, res) => {
       responseData.eventSchedule = place.eventSchedule;
     }
 
-    // Kéo thêm 5 Review mới nhất
     try {
       const reviews = await Review.find({ place: place._id })
         .limit(5)
@@ -194,7 +185,7 @@ exports.getPlaceDetail = async (req, res) => {
         .sort("-createdAt");
       responseData.recentReviews = reviews;
     } catch (reviewErr) {
-      responseData.recentReviews = []; // Nếu chưa có bảng Review thì gán rỗng để tránh văng app
+      responseData.recentReviews = [];
     }
 
     res.status(200).json({
@@ -206,7 +197,7 @@ exports.getPlaceDetail = async (req, res) => {
   }
 };
 
-// 4. [GET] Tìm kiếm địa điểm (Không yêu cầu đăng nhập)
+// 4. [GET] Tìm kiếm địa điểm
 exports.searchPlaces = async (req, res) => {
   try {
     const { keyword, category } = req.query;
@@ -218,22 +209,24 @@ exports.searchPlaces = async (req, res) => {
       query.$or = [
         { name: { $regex: safeKeyword, $options: "i" } },
         { description: { $regex: safeKeyword, $options: "i" } },
-        // LƯU Ý: Phải tạo field searchString trong schema hoặc hook pre('save') nếu muốn dùng dòng dưới
-        // { searchString: { $regex: noAccentKeyword, $options: "i" } },
       ];
     }
 
     if (category) query.category = category.toLowerCase();
 
-    // Tối ưu tốc độ tải: select các trường cơ bản chung của Bảng Cha
+    // THÊM: select("... images tags") để UI có ảnh và tags render ra bảng
     let places = await Place.find(query)
-      .select("name category minPrice maxPrice rating address numReview")
-      .sort({ rating: -1, numReview: -1 }) // Ưu tiên rating cao, review nhiều lên đầu
+      .select(
+        "name category minPrice maxPrice rating address numReview images tags location",
+      )
+      .sort({ rating: -1, numReview: -1 })
       .limit(20);
 
     if (places.length === 0) {
       const suggestions = await Place.find({ rating: { $gte: 4 } })
-        .select("name category minPrice maxPrice rating address")
+        .select(
+          "name category minPrice maxPrice rating address images tags location",
+        )
         .sort({ rating: -1 })
         .limit(5);
 
@@ -259,7 +252,7 @@ exports.searchPlaces = async (req, res) => {
   }
 };
 
-// 5. [GET] Gợi ý ngân sách cá nhân (Insights)
+// 5. [GET] Gợi ý ngân sách
 exports.getPlaceInsights = async (req, res) => {
   try {
     const { id } = req.params;
@@ -273,7 +266,6 @@ exports.getPlaceInsights = async (req, res) => {
     }
 
     let priceTier = "Chưa xác định";
-    // Dùng average price nếu có min/max, nếu không lấy ticketPrice, nếu không bằng 0
     const price = place.minPrice
       ? (place.minPrice + place.maxPrice) / 2
       : place.ticketPrice || 0;
@@ -286,7 +278,6 @@ exports.getPlaceInsights = async (req, res) => {
 
     let budgetAdvice = `Mức chi tiêu trung bình tham khảo: ${price.toLocaleString("vi-VN")} VNĐ. Đây là mức giá ${priceTier}.`;
 
-    // So sánh với ngân sách của user
     if (userId) {
       const user = await User.findById(userId);
       if (
@@ -295,9 +286,7 @@ exports.getPlaceInsights = async (req, res) => {
         user.targetBudget !== undefined
       ) {
         const gap = price - user.targetBudget;
-
         if (gap > 0) {
-          // Lấy context user tên Quân từ file của ông
           budgetAdvice = `Ê Quân, khoan! Chỗ này chi phí khoảng ${price.toLocaleString("vi-VN")}đ lận, cao hơn ngân sách ${user.targetBudget.toLocaleString("vi-VN")}đ cậu đặt ra ${gap.toLocaleString("vi-VN")}đ đấy. Suy nghĩ kỹ nhé!`;
         } else {
           budgetAdvice = `Tuyệt vời! Mức giá này hoàn toàn nằm trong ngân sách ${user.targetBudget.toLocaleString("vi-VN")}đ của bạn. Triển thôi!`;
@@ -307,11 +296,7 @@ exports.getPlaceInsights = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        price,
-        priceTier,
-        budgetAdvice,
-      },
+      data: { price, priceTier, budgetAdvice },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

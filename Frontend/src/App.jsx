@@ -19,6 +19,7 @@ import HeritagePage from "./screens/user/HeritagePage";
 // === 3. IMPORT TRANG ADMIN ===
 import AdminHomePage from "./screens/admin/AdminHomePage";
 import AdminUserPage from "./screens/admin/AdminUserPage";
+import AdminPlacePage from "./screens/admin/AdminPlacePage";
 
 function App() {
   return (
@@ -70,6 +71,7 @@ function App() {
           >
             <Route path="/admin" element={<AdminHomePage />} />
             <Route path="/admin/users" element={<AdminUserPage />} />
+            <Route path="/admin/places" element={<AdminPlacePage />} />
           </Route>
 
           {/* Redirect và xử lý trang không tồn tại */}
