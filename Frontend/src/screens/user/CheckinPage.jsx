@@ -77,7 +77,7 @@ const CheckinPage = () => {
   const [formData, setFormData] = useState({
     placeId: "",
     caption: "",
-    rating: 5, // Thêm state rating mặc định 5 sao
+    rating: 5,
   });
   const [previewImage, setPreviewImage] = useState(null);
   const fileInputRef = useRef(null);
@@ -152,32 +152,75 @@ const CheckinPage = () => {
     }
   };
 
+  // ==========================================
+  // HÀM XỬ LÝ CHÍNH: CHECK-IN VÀ REVIEW CÙNG LÚC
+  // ==========================================
   const processCheckinRequest = async (token, lat, lng) => {
     try {
-      const response = await fetch("http://localhost:5000/api/v1/checkin", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      // BƯỚC 1: GỌI API CHECK-IN
+      const checkinResponse = await fetch(
+        "http://localhost:5000/api/v1/checkin",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            placeId: formData.placeId,
+            userLat: lat,
+            userLng: lng,
+            caption: formData.caption,
+            rating: formData.rating,
+            media: previewImage ? [previewImage] : [],
+          }),
         },
-        body: JSON.stringify({
-          placeId: formData.placeId,
-          userLat: lat,
-          userLng: lng,
-          caption: formData.caption,
-          rating: formData.rating, // Gửi rating lên Backend
-          media: previewImage ? [previewImage] : [],
-        }),
-      });
+      );
 
-      const result = await response.json();
+      const checkinResult = await checkinResponse.json();
 
-      if (response.ok && result.success) {
-        setStatus({ type: "success", message: result.message });
+      if (checkinResponse.ok && checkinResult.success) {
+        // BƯỚC 2: NẾU USER CÓ VIẾT CẢM NGHĨ, TỰ ĐỘNG BẮN LUÔN API REVIEW
+        let reviewAdded = false;
+        if (formData.caption && formData.caption.trim() !== "") {
+          try {
+            // LƯU Ý: Tùy theo router ở backend ông map là gì, tôi giả định là /api/v1/reviews
+            const reviewResponse = await fetch(
+              "http://localhost:5000/api/v1/reviews",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  placeId: formData.placeId,
+                  rating: formData.rating,
+                  comment: formData.caption, // Backend của ông yêu cầu key là 'comment'
+                  media: previewImage ? [previewImage] : [],
+                }),
+              },
+            );
+            if (reviewResponse.ok) {
+              reviewAdded = true;
+            } else {
+              console.error("Tạo Review thất bại (Nhưng check-in vẫn OK)");
+            }
+          } catch (err) {
+            console.error("Lỗi khi gọi API tạo Review:", err);
+          }
+        }
+
+        // BƯỚC 3: CẬP NHẬT GIAO DIỆN
+        const successMsg = reviewAdded
+          ? "Check-in thành công & Đã đăng bài đánh giá!"
+          : checkinResult.message || "Check-in thành công!";
+
+        setStatus({ type: "success", message: successMsg });
         setFormData({ ...formData, caption: "", rating: 5 });
         setPreviewImage(null);
 
-        // Tính toán lại điểm trên Frontend để hiển thị nhanh
+        // Cộng điểm UI giả lập
         let earned = 10;
         if (formData.caption && previewImage && formData.rating) earned += 40;
         else if (formData.caption || previewImage || formData.rating)
@@ -187,7 +230,7 @@ const CheckinPage = () => {
       } else {
         setStatus({
           type: "error",
-          message: result.message || "Check-in thất bại!",
+          message: checkinResult.message || "Check-in thất bại!",
         });
       }
     } catch (error) {
@@ -215,10 +258,8 @@ const CheckinPage = () => {
     }
 
     if (IS_DEMO_MODE) {
-      // Ép tọa độ Cầu Rồng để Test
       processCheckinRequest(token, 16.0611, 108.2278);
     } else {
-      // Quét GPS thật
       if (!navigator.geolocation) {
         setStatus({ type: "error", message: "Trình duyệt không hỗ trợ GPS!" });
         setIsLoading(false);
@@ -459,7 +500,7 @@ const CheckinPage = () => {
           </div>
         </div>
 
-        {/* ... (Phần TRENDING NOW và Footer giữ nguyên) ... */}
+        {/* TRENDING NOW */}
         <div className="w-full px-6 md:px-12 py-16 bg-white border-t border-slate-100 mt-8">
           <div
             className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4"

@@ -34,7 +34,7 @@ exports.register = async (req, res) => {
       email,
       password: hashedPassword,
       fullName,
-      role: role || "TOURIST",
+      role: "TOURIST",
       verificationCode: otp,
       verificationCodeExpires: otpExpires,
     });
@@ -70,6 +70,13 @@ exports.verifyEmail = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
+    }
+    if (!user.isVerified) {
+      return res
+        .status(403)
+        .json({
+          message: "Vui lòng xác thực email bằng OTP trước khi đăng nhập!",
+        });
     }
     if (user.isVerified) {
       return res

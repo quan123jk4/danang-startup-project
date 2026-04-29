@@ -1,6 +1,8 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 const NatureSection = () => {
+  const navigate = useNavigate();
   return (
     // Nền màu đỏ nâu (#70322E - bóc từ ảnh gốc)
     <section className="w-full bg-[#70322E] py-24 px-8 md:px-16 overflow-hidden">
@@ -43,7 +45,10 @@ const NatureSection = () => {
           </div>
 
           {/* Nút bấm (Bo tròn viên thuốc - rounded-full) */}
-          <button className="px-8 py-3.5 rounded-full border border-[#F6D385] text-white font-bold text-sm hover:bg-[#F6D385] hover:text-[#70322E] transition-all duration-300">
+          <button
+            onClick={() => navigate("/heritage-gallery")}
+            className="px-8 py-3.5 rounded-full border border-[#F6D385] text-white font-bold text-sm hover:bg-[#F6D385] hover:text-[#70322E] transition-all duration-300"
+          >
             Khám phá kho di sản
           </button>
         </div>
@@ -54,7 +59,7 @@ const NatureSection = () => {
           data-aos-delay="200"
         >
           <img
-            src="/assets/ngũ hành sơn.webp" 
+            src="/assets/ngũ hành sơn.webp"
             alt="Thiên nhiên kỳ ảo"
             className="w-full h-[450px] md:h-[550px] object-cover rounded-[2rem] shadow-2xl"
           />

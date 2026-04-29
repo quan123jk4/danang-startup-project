@@ -14,5 +14,7 @@ router.post(
 
 // Link API: http://localhost:5000/api/v1/vouchers/redeem
 router.post("/redeem", protect, voucherController.redeemVoucher);
+router.get("/list", voucherController.getAllVouchers);
+router.get("/my-redemptions", protect, voucherController.getMyRedemptions);
 
 module.exports = router;

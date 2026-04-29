@@ -16,25 +16,22 @@ def haversine_distance(coord1, coord2):
 def get_optimal_route(places, days=1):
     if not places: return []
 
-    # 1. K-MEANS NÂNG CẤP: Phân cụm CÓ GIỚI HẠN SỨC CHỨA (Load Balancing)
+    # 1. K-Means Load Balancing
     if days > 1 and len(places) >= days:
         coords = np.array([[p['lat'], p['lng']] for p in places])
         kmeans = KMeans(n_clusters=days, random_state=42, n_init=10)
         kmeans.fit(coords)
         centroids = kmeans.cluster_centers_
         
-        # Tính khoảng cách từ mỗi điểm đến các tâm cụm (Centroids)
         dist_matrix = np.zeros((len(coords), len(centroids)))
         for i in range(len(coords)):
             for j in range(len(centroids)):
                 dist_matrix[i][j] = np.linalg.norm(coords[i] - centroids[j])
         
-        # Ép luật: Số lượng điểm tối đa mỗi ngày = Tổng số điểm / Số ngày (làm tròn lên)
         max_per_day = math.ceil(len(places) / days)
         day_counts = {d: 0 for d in range(days)}
         
         for i in range(len(places)):
-            # Tìm cụm gần nhất, nhưng nếu cụm đó ĐÃ ĐẦY (đạt max_per_day), phải xếp vào cụm kế tiếp
             sorted_centroids = np.argsort(dist_matrix[i])
             for c in sorted_centroids:
                 if day_counts[c] < max_per_day:
@@ -46,14 +43,13 @@ def get_optimal_route(places, days=1):
             p['day'] = 1
 
     daily_itineraries = []
-    total_trip_km = 0
-
-    # 2. Xếp lộ trình cho từng ngày
+    
+    # 2. OR-Tools TSP
     for d in range(1, days + 1):
-        day_places = [p for p in places if p['day'] == d]
+        day_places = [p for p in places if p.get('day') == d]
         if not day_places: continue
 
-        depot = {'id': 0, 'name': f'Khách sạn (Ngày {d})', 'lat': 16.0605, 'lng': 108.2208, 'time_order': 0, 'duration_mins': 0, 'match_score': 1.0}
+        depot = {'id': 0, 'name': 'Khách sạn', 'lat': 16.0605, 'lng': 108.2208, 'time_order': 0, 'duration_mins': 0}
         all_locations = [depot] + day_places
         
         matrix = []
@@ -64,13 +60,11 @@ def get_optimal_route(places, days=1):
                     (all_locations[i]['lat'], all_locations[i]['lng']), 
                     (all_locations[j]['lat'], all_locations[j]['lng'])
                 )
-                
-                # Luật Thời gian (Time Penalty)
+                # Phạt thời gian nếu đi ngược Sáng/Chiều
                 t_from = all_locations[i].get('time_order', 0)
                 t_to = all_locations[j].get('time_order', 0)
                 if j != 0 and t_to < t_from:
                     dist += 500000 
-                    
                 row.append(dist)
             matrix.append(row)
 
@@ -82,51 +76,24 @@ def get_optimal_route(places, days=1):
 
         transit_callback_index = routing.RegisterTransitCallback(distance_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
-
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-
         solution = routing.SolveWithParameters(search_parameters)
 
         if solution:
             index = routing.Start(0)
             route = []
-            day_dist = 0
-            day_duration_mins = 0 # Biến mới: Tính tổng thời gian
-            
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
-                current_place = all_locations[node_index]
-                route.append(current_place)
-                
-                # Cộng thời gian khách chơi ở địa điểm này
-                day_duration_mins += current_place.get('duration_mins', 0)
-                
-                previous_index = index
+                route.append(all_locations[node_index])
                 index = solution.Value(routing.NextVar(index))
-                
-                real_dist = haversine_distance(
-                    (all_locations[manager.IndexToNode(previous_index)]['lat'], all_locations[manager.IndexToNode(previous_index)]['lng']),
-                    (all_locations[manager.IndexToNode(index)]['lat'], all_locations[manager.IndexToNode(index)]['lng'])
-                )
-                day_dist += real_dist
-                
-                # Cộng thời gian di chuyển trên đường (Giả sử xe chạy 30km/h = 500 mét / 1 phút)
-                day_duration_mins += (real_dist / 500)
-                
-            # Đoạn đường cuối quay về KS
+            
             last_node = manager.IndexToNode(index)
             route.append(all_locations[last_node])
             
             daily_itineraries.append({
                 "day": d,
-                "distance_km": round(day_dist / 1000, 2),
-                "estimated_hours": round(day_duration_mins / 60, 1), # Chuyển ra giờ
                 "route": route
             })
-            total_trip_km += day_dist
 
-    return {
-        "daily_itineraries": daily_itineraries,
-        "total_trip_km": round(total_trip_km / 1000, 2)
-    }
+    return daily_itineraries
