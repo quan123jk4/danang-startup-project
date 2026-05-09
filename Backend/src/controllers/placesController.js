@@ -8,6 +8,8 @@ const {
 const Review = require("../Models/Review");
 const User = require("../Models/User");
 const { escapeRegex, removeVietnameseTones } = require("../utils/searchHelper");
+const xlsx = require("xlsx");
+const fs = require("fs");
 
 // 1. [POST] Tạo địa điểm mới
 exports.createPlace = async (req, res) => {

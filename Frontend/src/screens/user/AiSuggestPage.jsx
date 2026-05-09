@@ -63,7 +63,7 @@ const AiSuggestPage = () => {
   // State quản lý bộ lọc
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [activeBudget, setActiveBudget] = useState("Vừa phải");
+  const [budgetAmount, setBudgetAmount] = useState(0);
   const [activeCompanions, setActiveCompanions] = useState("Cặp đôi");
   const [activeInterests, setActiveInterests] = useState([
     "#ẨmThực",
@@ -171,12 +171,11 @@ const AiSuggestPage = () => {
     const payload = {
       days: days,
       dates: { start: startDate, end: endDate },
-      budget: activeBudget,
+      budget: Number(budgetAmount) || 0, // <--- Sửa chỗ này
       companions: activeCompanions,
       interests: activeInterests,
       culturalFocus: isCultureFocus,
     };
-
     console.log("Đã xác định payload:", payload); // Log ra để chắc chắn nó tồn tại
 
     setIsLoading(true);
@@ -292,22 +291,52 @@ const AiSuggestPage = () => {
                 {/* 3. Ngân sách dự kiến */}
                 <div className="flex flex-col gap-3">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <FontAwesomeIcon icon={faWallet} /> Ngân sách
+                    <FontAwesomeIcon icon={faWallet} /> Ngân sách chuyến đi
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {BUDGET_OPTIONS.map((budget) => (
-                      <button
-                        key={budget}
-                        onClick={() => setActiveBudget(budget)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors ${
-                          activeBudget === budget
-                            ? "bg-[#002045] text-white shadow-md"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                        }`}
-                      >
-                        {budget}
-                      </button>
-                    ))}
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      // Format số hiển thị có dấu chấm (VD: 5.000.000)
+                      value={
+                        budgetAmount === ""
+                          ? ""
+                          : new Intl.NumberFormat("vi-VN").format(budgetAmount)
+                      }
+                      onChange={(e) => {
+                        // Loại bỏ tất cả các ký tự không phải là số (chữ cái, dấu phẩy, khoảng trắng...)
+                        const rawValue = e.target.value.replace(/\D/g, "");
+                        // Cập nhật lại state thành số
+                        setBudgetAmount(rawValue ? Number(rawValue) : "");
+                      }}
+                      placeholder="Nhập ngân sách của bạn..."
+                      className="w-full bg-slate-50 border border-slate-200 text-[#002045] text-sm rounded-xl px-4 py-3 pr-12 focus:outline-none focus:border-[#002045] font-bold"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">
+                      VNĐ
+                    </span>
+                  </div>
+
+                  {/* Nút bấm nhanh (Quick Suggestions) */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setBudgetAmount(2000000)}
+                      className="text-[10px] bg-slate-100 text-slate-500 font-bold px-3 py-1.5 rounded-md hover:bg-slate-200 transition-colors"
+                    >
+                      2 Triệu
+                    </button>
+                    <button
+                      onClick={() => setBudgetAmount(5000000)}
+                      className="text-[10px] bg-slate-100 text-slate-500 font-bold px-3 py-1.5 rounded-md hover:bg-slate-200 transition-colors"
+                    >
+                      5 Triệu
+                    </button>
+                    <button
+                      onClick={() => setBudgetAmount(10000000)}
+                      className="text-[10px] bg-slate-100 text-slate-500 font-bold px-3 py-1.5 rounded-md hover:bg-slate-200 transition-colors"
+                    >
+                      10 Triệu
+                    </button>
                   </div>
                 </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../../context/AuthContext";
 
@@ -48,11 +48,10 @@ const PREDEFINED_TAGS = [
   "Khám phá",
   "Chợ đêm",
 ];
+
 const formatCurrency = (value) => {
   if (!value) return "";
-  // Xóa hết tất cả các ký tự không phải là số
   const numericValue = value.toString().replace(/\D/g, "");
-  // Chèn dấu chấm vào mỗi 3 chữ số
   return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
 
@@ -65,6 +64,8 @@ export default function AdminPlacePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isUploading, setIsUploading] = useState(false); // State cho Import Excel
+  const fileInputRef = useRef(null);
   const placesPerPage = 5;
 
   // === 2. STATE MODAL THÊM MỚI ===
@@ -73,7 +74,6 @@ export default function AdminPlacePage() {
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   const [formData, setFormData] = useState({
-    // Các trường Base
     name: "",
     category: "attraction",
     address: "",
@@ -85,8 +85,6 @@ export default function AdminPlacePage() {
     lng: "",
     tags: [],
     image: "",
-
-    // Các trường Discriminator
     ticketPrice: "",
     tourDuration: "",
     activities: "",
@@ -99,12 +97,12 @@ export default function AdminPlacePage() {
     eventSchedule: "",
   });
 
-  // === 3. STATE MODAL XÓA ===
+  // === 3. STATE MODAL THÔNG BÁO / XÁC NHẬN ===
   const [modal, setModal] = useState({
     isOpen: false,
     title: "",
     message: "",
-    type: "danger",
+    type: "danger", // success, warning, danger
     isAlertOnly: false,
     onConfirm: null,
   });
@@ -139,8 +137,6 @@ export default function AdminPlacePage() {
   // ==========================================
   // HÀM TIỆN ÍCH TẠO FORM
   // ==========================================
-
-  // 1. Hàm bật/tắt Tag trong mảng
   const handleToggleTag = (tag) => {
     setFormData((prev) => ({
       ...prev,
@@ -150,7 +146,6 @@ export default function AdminPlacePage() {
     }));
   };
 
-  // 2. Hàm gọi API Lấy Tọa Độ Miễn Phí (OpenStreetMap)
   const handleAutoFetchCoordinates = async () => {
     const addressToSearch = formData.address || formData.name;
 
@@ -210,7 +205,6 @@ export default function AdminPlacePage() {
   const handleAddPlace = async (e) => {
     e.preventDefault();
     try {
-      // (Đoạn code kiểm tra minPrice, maxPrice và tạo payload giữ nguyên...)
       const minP = Number(formData.minPrice) || 0;
       const maxP = Number(formData.maxPrice) || 0;
 
@@ -277,7 +271,6 @@ export default function AdminPlacePage() {
         setIsTagDropdownOpen(false);
         fetchPlaces();
 
-        // GỌI MODAL THÀNH CÔNG THAY VÌ ALERT
         setModal({
           isOpen: true,
           title: "Thành công",
@@ -311,7 +304,6 @@ export default function AdminPlacePage() {
         });
       }
     } catch (err) {
-      // GỌI MODAL LỖI THAY VÌ ALERT
       setModal({
         isOpen: true,
         title: "Thất bại",
@@ -321,6 +313,68 @@ export default function AdminPlacePage() {
         type: "danger",
         isAlertOnly: true,
       });
+    }
+  };
+
+  // ==========================================
+  // XỬ LÝ IMPORT EXCEL
+  // ==========================================
+  const handleExcelUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.match(/\.(xlsx|xls|csv)$/)) {
+      setModal({
+        isOpen: true,
+        title: "Sai định dạng",
+        message: "Chỉ chấp nhận file định dạng Excel (.xlsx, .xls, .csv)",
+        type: "warning",
+        isAlertOnly: true,
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("excelFile", file);
+
+    setIsUploading(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        `${API_BASE_URL}/import-excel`, // Sử dụng API_BASE_URL
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (response.data.success) {
+        setModal({
+          isOpen: true,
+          title: "Nạp dữ liệu thành công!",
+          message: response.data.message,
+          type: "success",
+          isAlertOnly: true,
+        });
+        fetchPlaces(); // Refresh bảng dữ liệu
+      }
+    } catch (error) {
+      console.error("Lỗi upload:", error);
+      setModal({
+        isOpen: true,
+        title: "Lỗi nạp Excel",
+        message:
+          error.response?.data?.message || "Đã xảy ra lỗi khi nạp file Excel!",
+        type: "danger",
+        isAlertOnly: true,
+      });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -442,25 +496,61 @@ export default function AdminPlacePage() {
                   {filteredPlaces.length}
                 </span>
               </span>
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="cursor-pointer xflex-1 md:flex-none flex items-center justify-center gap-2 bg-[#C4391D] hover:bg-[#a02e16] text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md shadow-red-500/20"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+
+              {/* KHỐI BUTTON IMPORT EXCEL & THÊM ĐỊA ĐIỂM TAY */}
+              <div className="flex gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleExcelUpload}
+                  accept=".xlsx, .xls, .csv"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current.click()}
+                  disabled={isUploading}
+                  className="cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white px-5 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md shadow-emerald-500/20"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                Thêm Địa Điểm
-              </button>
+                  {isUploading ? (
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
+                  ) : (
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                      />
+                    </svg>
+                  )}
+                  Nhập Excel
+                </button>
+
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="cursor-pointer flex items-center justify-center gap-2 bg-[#C4391D] hover:bg-[#a02e16] text-white px-5 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md shadow-red-500/20"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Thêm Tay
+                </button>
+              </div>
             </div>
           </div>
 
@@ -800,7 +890,7 @@ export default function AdminPlacePage() {
                       </div>
                     </div>
 
-                    {/* Bộ từ khóa AI (Multi-select Dropdown với Checkbox) */}
+                    {/* Bộ từ khóa AI */}
                     <div className="col-span-2 relative">
                       <label className="text-[11px] font-bold text-slate-500 uppercase ml-1">
                         Bộ từ khóa AI (Gợi ý lộ trình)
@@ -940,7 +1030,7 @@ export default function AdminPlacePage() {
                       </div>
                     </div>
 
-                    {/* Tọa độ (Có thể nhập tay hoặc tự nhảy từ nút Geocoding) */}
+                    {/* Tọa độ */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-[11px] font-bold text-slate-500 uppercase ml-1">
@@ -988,7 +1078,6 @@ export default function AdminPlacePage() {
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mt-1 outline-none focus:border-[#002045]"
                           value={formatCurrency(formData.minPrice)}
                           onChange={(e) => {
-                            // Khi gõ, xóa dấu chấm đi để lưu vào state là số nguyên (String chứa số)
                             const rawValue = e.target.value.replace(/\./g, "");
                             setFormData({ ...formData, minPrice: rawValue });
                           }}
@@ -1265,68 +1354,11 @@ export default function AdminPlacePage() {
           </div>
         )}
 
-        {/* ================= MODAL XÓA ================= */}
-        {modal.isOpen && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-[24px] shadow-2xl w-[90%] max-w-[400px] overflow-hidden flex flex-col transform transition-all">
-              <div className="p-8 flex flex-col items-center text-center">
-                <div
-                  className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${modal.type === "danger" ? "bg-red-50 text-red-500" : "bg-blue-50 text-[#002045]"}`}
-                >
-                  <svg
-                    className="w-8 h-8"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2.5}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-[19px] font-black text-slate-800 mb-2.5">
-                  {modal.title}
-                </h3>
-                <p className="text-slate-500 font-medium text-[13px] leading-relaxed">
-                  {modal.message}
-                </p>
-              </div>
-              <div className="bg-slate-50 px-6 py-5 flex items-center justify-center gap-3 border-t border-slate-100">
-                {modal.isAlertOnly ? (
-                  <button
-                    onClick={() => setModal({ ...modal, isOpen: false })}
-                    className="w-full py-3 rounded-xl font-bold text-[13px] bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
-                  >
-                    Đã hiểu
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setModal({ ...modal, isOpen: false })}
-                      className="flex-1 py-3 rounded-xl font-bold text-[13px] bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors shadow-sm"
-                    >
-                      Hủy bỏ
-                    </button>
-                    <button
-                      onClick={modal.onConfirm}
-                      className="flex-1 py-3 rounded-xl font-bold text-[13px] text-white bg-red-600 hover:bg-red-700 shadow-md transition-colors"
-                    >
-                      Xác nhận Xóa
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ================= MODAL THÔNG BÁO CHUNG ================= */}
         {modal.isOpen && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-[24px] shadow-2xl w-[90%] max-w-[400px] overflow-hidden flex flex-col transform transition-all scale-100 animate-in fade-in zoom-in duration-200">
               <div className="p-8 flex flex-col items-center text-center">
-                {/* Đổi màu và Icon dựa theo type của Modal */}
                 <div
                   className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${
                     modal.type === "success"

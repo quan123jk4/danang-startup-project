@@ -1,93 +1,71 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+import os
 
-# Import logic từ các thư mục con
-from models.recommendation import get_recommendations
-from models.routing import get_optimal_route
+# IMPORT ĐÚNG TỪ FILE CỦA CLAUDE
+from advanced_ai import MainAIEngine, ItineraryRequest
 
-app = FastAPI(title="Danasoul AI API")
+app = FastAPI(title="Travel AI Engine - Mongoose Synced")
 
-# --- 1. Cấu trúc Payload ---
-class DatesReq(BaseModel):
-    start: str
-    end: str
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class ItineraryRequest(BaseModel):
+# Kết nối MongoDB (Chỉnh sửa tên DB cho khớp với máy của ông)
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+DB_NAME = "Danasoul" # <--- TÊN DB CỦA ÔNG Ở ĐÂY
+client = MongoClient(MONGODB_URI)
+db = client[DB_NAME]
+
+# Khởi tạo Engine
+ai_engine = MainAIEngine(db)
+
+class GenerateRequest(BaseModel):
     days: int
-    dates: DatesReq
-    budget: str
-    companions: str
+    destination: Optional[str] = "Da Nang"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    budget: float
     interests: List[str]
-    culturalFocus: bool
-
-# --- 2. Endpoint ---
-@app.get("/")
-def read_root():
-    return {"status": "success", "message": "Hệ thống AI Danasoul đã sẵn sàng!"}
+    travel_style: Optional[str] = 'comfort'
+    user_id: Optional[str] = 'guest'
+    min_rating: Optional[float] = 3.0
+    travel_pace: Optional[str] = 'moderate'
 
 @app.post("/api/python/generate-itinerary")
-def generate_itinerary(request: ItineraryRequest):
-    days = request.days if request.days > 0 else 1
-    top_places_needed = days * 3 
-    
-    # Nối mảng interests thành chuỗi cho BERT
-    preferences_str = " ".join([tag.replace('#', '') for tag in request.interests])
-    if not preferences_str:
-        preferences_str = "khám phá ngắm cảnh"
+def generate_itinerary(data: GenerateRequest):
+    try:
+        # Xử lý ngày tháng an toàn
+        start = datetime.fromisoformat(data.start_date.replace("Z", "+00:00")) if data.start_date else datetime.now()
+        end = datetime.fromisoformat(data.end_date.replace("Z", "+00:00")) if data.end_date else start + timedelta(days=data.days)
 
-    # GỌI MODULE 1: Khuyến nghị
-    recommended_places = get_recommendations(
-        user_preference=preferences_str, 
-        top_n=top_places_needed,
-        budget=request.budget,
-        companions=request.companions,
-        cultural_focus=request.culturalFocus
-    )
-    
-    # GỌI MODULE 2: Xếp đường
-    optimized_result = get_optimal_route(recommended_places, days=days)
-    
-    if not optimized_result:
-        return {"success": False, "message": "Lỗi: Không thể chia đường đi."}
+        req = ItineraryRequest(
+            destination=data.destination,
+            start_date=start,
+            end_date=end,
+            budget=data.budget,
+            interests=data.interests,
+            travel_style=data.travel_style,
+            user_id=data.user_id,
+            min_rating=data.min_rating,
+            travel_pace=data.travel_pace
+        )
         
-    # --- FORMAT KẾT QUẢ CHO REACT ---
-    formatted_itinerary = []
-    time_slots = ["08:30 AM", "02:00 PM", "07:30 PM", "09:00 PM"]
-    item_id = 1
-    images = [
-        "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=500",
-        "https://images.unsplash.com/photo-1541167760496-1628856ab772?q=80&w=500",
-        "https://images.unsplash.com/photo-1555921015-5532091f6026?q=80&w=500"
-    ]
-
-    for daily in optimized_result:
-        day_num = daily.get('day', 1)
-        route = daily.get('route', [])
+        result = ai_engine.run_itinerary_generation(req)
         
-        # Bỏ qua khách sạn (id = 0)
-        actual_places = [p for p in route if p.get('id', -1) != 0]
-        
-        for idx, place in enumerate(actual_places):
-            tags_str = place.get('tags', '')
-            tag_list = tags_str.split() if tags_str else []
-            display_tags = [f"#{t.capitalize()}" for t in tag_list[:2]]
-            if not display_tags:
-                display_tags = ["#Danasoul"]
-                
-            formatted_itinerary.append({
-                "id": item_id,
-                "dayNumber": f"0{day_num}" if day_num < 10 else str(day_num),
-                "dayLabel": f"Ngày {day_num}",
-                "time": time_slots[idx % len(time_slots)],
-                "title": place.get('name', 'Địa điểm chưa rõ'),
-                "description": f"Khoảng cách đã được tối ưu. Trải nghiệm {place.get('name', '')} cực kỳ phù hợp với sở thích của bạn.",
-                "tags": display_tags,
-                "image": images[item_id % len(images)] 
-            })
-            item_id += 1
+        if not result:
+            return {"success": False, "message": f"Không tìm thấy địa điểm phù hợp."}
             
-    return {
-        "success": True,
-        "data": formatted_itinerary
-    }
+        return {"success": True, "data": result['days']} 
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
