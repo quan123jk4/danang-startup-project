@@ -15,6 +15,8 @@ import CheckinPage from "./screens/user/CheckinPage";
 import AiSuggestPage from "./screens/user/AiSuggestPage";
 import VoucherPage from "./screens/user/VoucherPage";
 import HeritagePage from "./screens/user/HeritagePage";
+import ExplorePage from "./screens/user/ExplorePage";
+import PlaceDetailPage from "./screens/user/PlaceDetailPage";
 
 // === 3. IMPORT TRANG ADMIN ===
 import AdminHomePage from "./screens/admin/AdminHomePage";
@@ -60,6 +62,8 @@ function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/check-in" element={<CheckinPage />} />
             <Route path="/voucher" element={<VoucherPage />} />
+            <Route path="/explore" element={<ExplorePage />} />
+            <Route path="/explore/:id" element={<PlaceDetailPage />} />
           </Route>
 
           {/* ==========================================

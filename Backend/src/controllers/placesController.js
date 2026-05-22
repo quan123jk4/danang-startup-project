@@ -313,3 +313,63 @@ exports.getPlaceInsights = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+exports.importPlacesFromExcel = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Vui lòng upload file Excel!" });
+    }
+
+    const workbook = xlsx.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rawData = xlsx.utils.sheet_to_json(worksheet);
+
+    if (rawData.length === 0) {
+      return res.status(400).json({ success: false, message: "File Excel rỗng!" });
+    }
+
+    const formattedData = rawData.map((row) => {
+      let tagsArray = row.Tags ? row.Tags.toString().split(",").map(tag => tag.trim()) : [];
+      let imagesArray = row.Images ? row.Images.toString().split(",").map(img => img.trim()) : [];
+
+      return {
+        name: row.Name,
+        category: row.Category, 
+        address: row.Address || "",
+        minPrice: Number(row.MinPrice) || 0,
+        maxPrice: Number(row.MaxPrice) || 0,
+        rating: Number(row.Rating) || 5,
+        description: row.Description || "",
+        tags: tagsArray,
+        images: imagesArray,
+        location: {
+          type: "Point",
+          coordinates: [Number(row.Lng) || 0, Number(row.Lat) || 0], 
+        },
+        time_order: Number(row.TimeOrder) || 1, 
+        duration_mins: Number(row.DurationMins) || 90,
+        price_level: Number(row.PriceLevel) || 1
+      };
+    });
+
+    const result = await Place.insertMany(formattedData); // Chú ý: Đảm bảo biến Model Place của ông đã được require trong file này
+
+    fs.unlinkSync(req.file.path);
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã nạp thành công ${result.length} địa điểm!`,
+    });
+
+  } catch (error) {
+    console.error("Lỗi Import Excel:", error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống khi xử lý file Excel.",
+      error: error.message,
+    });
+  }
+};

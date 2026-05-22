@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faMapMarkerAlt,
@@ -71,6 +72,7 @@ const trendingPlaces = [
 ];
 
 const CheckinPage = () => {
+  const navigate = useNavigate();
   const [placesList, setPlacesList] = useState([]);
   const [userPoints, setUserPoints] = useState(0);
 
@@ -517,7 +519,11 @@ const CheckinPage = () => {
                 Azure tuần này.
               </p>
             </div>
-            <button className="text-[#002045] font-bold text-sm hover:underline flex items-center gap-2 group">
+            <button
+              type="button"
+              onClick={() => navigate("/explore")}
+              className="text-[#002045] font-bold text-sm hover:underline flex items-center gap-2 group"
+            >
               Xem tất cả{" "}
               <FontAwesomeIcon
                 icon={faArrowRight}
