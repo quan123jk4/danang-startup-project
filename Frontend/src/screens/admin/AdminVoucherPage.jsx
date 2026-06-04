@@ -38,9 +38,10 @@ export default function AdminVoucherPage() {
   });
 
   // === KHAI BÁO LINK API TỪ BACKEND CỦA ÔNG ===
-  const API_GET_VOUCHERS = "http://localhost:5000/api/v1/vouchers/admin/list";
+  const API_GET_VOUCHERS =
+    "https://danasoul-project.onrender.com/api/v1/vouchers/admin/list";
   const API_CREATE_VOUCHER =
-    "http://localhost:5000/api/v1/vouchers/admin/create";
+    "https://danasoul-project.onrender.com/api/v1/vouchers/admin/create";
 
   // === GỌI API LẤY DATA NGAY KHI VÀO TRANG ===
   useEffect(() => {

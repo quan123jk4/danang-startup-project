@@ -60,7 +60,7 @@ export default function AdminHomePage() {
         if (!token) return navigate("/login");
 
         const response = await axios.get(
-          "http://localhost:5000/api/v1/admin/dashboard",
+          "https://danasoul-project.onrender.com/api/v1/admin/dashboard",
           {
             headers: { Authorization: `Bearer ${token}` },
           },

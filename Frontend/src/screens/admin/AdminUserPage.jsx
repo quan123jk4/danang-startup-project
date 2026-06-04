@@ -30,7 +30,7 @@ export default function AdminUserPage() {
     onConfirm: null,
   });
 
-  const API_BASE_URL = "http://localhost:5000/api/v1/users";
+  const API_BASE_URL = "https://danasoul-project.onrender.com/api/v1/users";
 
   // Fetch Danh sách User
   useEffect(() => {

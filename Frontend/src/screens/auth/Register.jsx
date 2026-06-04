@@ -98,10 +98,13 @@ const Register = () => {
 
     setLoading(true);
     try {
-      await axios.post("http://localhost:5000/api/v1/auth/verify-email", {
-        email: formData.email,
-        otp: otp,
-      });
+      await axios.post(
+        "https://danasoul-ai-1.onrender.com/api/v1/auth/verify-email",
+        {
+          email: formData.email,
+          otp: otp,
+        },
+      );
 
       // BỎ ALERT ĐI - Chuyển sang Màn hình thành công (Bước 3)
       setStep(3);
