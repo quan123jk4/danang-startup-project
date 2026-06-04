@@ -1,8 +1,7 @@
-import os
 import math
 import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from dataclasses import dataclass
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -12,17 +11,15 @@ class Place:
     id: str
     name: str
     category: str
-    coordinates: List[float]  # Khớp với Mongoose: [lng, lat]
+    coordinates: List[float]
     rating: float
-    minPrice: float           # Khớp với Mongoose: minPrice
-    maxPrice: float           # Khớp với Mongoose: maxPrice
+    minPrice: float 
+    maxPrice: float
     address: str
-    tags: List[str]           # Khớp với Mongoose: tags
-    image: str                # Lấy từ mảng images[0] của Mongoose để render UI
-    amenities: List[str] = None
-    ticketPrice: float = None
-    activities: List[str] = None
-    tourDuration: str = None
+    tags: List[str]
+    image: str
+    embedding: List[float] = None
+
 
 @dataclass
 class ItineraryRequest:
@@ -31,212 +28,261 @@ class ItineraryRequest:
     end_date: datetime
     budget: float
     interests: List[str]
-    travel_style: str
-    user_id: str
+    travel_style: str = "cultural"
+    user_id: str = "guest"
     min_rating: float = 3.5
     travel_pace: str = 'moderate'
 
+
+# ==================== USER PREFERENCE ANALYZER ====================
+class UserPreferenceAnalyzer:
+    def __init__(self):
+        self.style_weights = {
+            'luxury': {'price': 0.25, 'rating': 0.4, 'amenities': 0.35},
+            'budget': {'price': 0.5, 'rating': 0.25, 'amenities': 0.25},
+            'adventure': {'price': 0.2, 'rating': 0.3, 'amenities': 0.5},
+            'cultural': {'price': 0.25, 'rating': 0.35, 'amenities': 0.4},
+            'foodie': {'price': 0.2, 'rating': 0.25, 'amenities': 0.55},
+            'relax': {'price': 0.35, 'rating': 0.35, 'amenities': 0.3},
+            'một mình': {'price': 0.3, 'rating': 0.35, 'amenities': 0.35},
+        }
+
+    def analyze(self, req: ItineraryRequest) -> Dict:
+        style = req.travel_style.lower() if req.travel_style else "cultural"
+        weights = self.style_weights.get(style, self.style_weights['cultural'])
+        return {
+            'interests': req.interests,
+            'travel_style': style,
+            'weights': weights,
+            'min_rating': req.min_rating,
+            'pace': req.travel_pace
+        }
+
+
 # ==================== UTILITY FUNCTIONS ====================
 def haversine_distance(coord1: List[float], coord2: List[float]) -> float:
-    """Tính khoảng cách (km) giữa 2 điểm [lng, lat]"""
     lng1, lat1 = coord1
     lng2, lat2 = coord2
     R = 6371
     lat1_rad, lat2_rad = math.radians(lat1), math.radians(lat2)
-    delta_lat, delta_lng = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lng = math.radians(lng2 - lng1)
     a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lng/2)**2
     return R * (2 * math.asin(math.sqrt(a)))
 
+
 def estimate_travel_time(distance_km: float) -> int:
-    return max(15, int((distance_km / 30) * 60))
+    return max(10, int((distance_km / 30) * 60))
 
-# ==================== AI ENGINES (Logic của Claude) ====================
-class CollaborativeFilteringEngine:
-    def __init__(self, user_prefs_collection):
-        self.user_prefs_collection = user_prefs_collection
-    
-    def _preference_to_vector(self, pref: Dict) -> np.ndarray:
-        vector = []
-        cat_prefs = pref.get('preferred_categories', {})
-        for cat in ['hotel', 'restaurant', 'attraction', 'entertainment']:
-            vector.append(cat_prefs.get(cat, 0.5))
-        vector.append(min(pref.get('average_budget_per_day', 3000000) / 10000000, 1.0))
-        vector.append({'slow': 0, 'moderate': 0.5, 'fast': 1}.get(pref.get('travel_pace', 'moderate'), 0.5))
-        vector.append(len(pref.get('favorite_cuisines', [])) / 10)
-        return np.array(vector)
 
+# ==================== SMART ITINERARY BUILDER ====================
 class SmartItineraryBuilder:
     def __init__(self):
         self.MORNING_START = 9
-        # Thời gian chơi mặc định cho từng category (nếu Mongoose không có tourDuration)
-        self.ACTIVITY_DURATION = {'attraction': 120, 'restaurant': 60, 'hotel': 0, 'entertainment': 90}
-    
-    def calculate_place_score(self, place: Place, user_prefs: Dict, interests: List[str]) -> float:
-        score = (place.rating / 5) * 30
-        tag_matches = len(set(place.tags) & set(interests))
-        score += min(tag_matches / max(len(interests), 1), 1) * 30
-        avg_price = (place.minPrice + place.maxPrice) / 2
-        if avg_price > 0:
-            score += max(0, 25 - (abs(avg_price - user_prefs.get('daily_budget', 1000)) / 1000) * 25)
-        return min(score + 15, 100)
-    
-    def schedule_time_for_activity(self, category: str, current_hour: int) -> Tuple[str, str]:
-        duration = self.ACTIVITY_DURATION.get(category, 60)
-        end_hour = current_hour + (duration // 60)
-        end_minute = duration % 60
-        return f"{current_hour:02d}:00", f"{end_hour:02d}:{end_minute:02d}"
-    
-    def optimize_route(self, day_places: List[Place]) -> List[Place]:
-        if len(day_places) <= 1: return day_places
-        remaining = list(day_places)
-        optimized = []
-        current = next((p for p in remaining if p.category == 'hotel'), None)
-        if current:
-            remaining.remove(current)
-            optimized.append(current)
-        else:
-            current = remaining.pop(0)
-            optimized.append(current)
-            
-        while remaining:
-            nearest = min(remaining, key=lambda p: haversine_distance(current.coordinates, p.coordinates))
-            optimized.append(nearest)
-            remaining.remove(nearest)
-            current = nearest
-        return optimized
-
-    def build(self, req: ItineraryRequest, places: List[Place], user_prefs_collection) -> Dict:
-        num_days = (req.end_date - req.start_date).days + 1
-        daily_budget = req.budget / num_days
+        self.analyzer = UserPreferenceAnalyzer()
         
-        user_prefs = user_prefs_collection.find_one({'user_id': req.user_id}) or {}
-        user_prefs['daily_budget'] = daily_budget
-        
-        scored_places = [(place, self.calculate_place_score(place, user_prefs, req.interests)) for place in places]
-        scored_places.sort(key=lambda x: x[1], reverse=True)
-        
-        places_per_day = len(places) // num_days + 1
-        itinerary_days = []
-        place_idx = 0
-        
-        hotels = [p for p in scored_places if p[0].category == 'hotel']
-        activities = [p for p in scored_places if p[0].category != 'hotel']
-
-        for day_num in range(1, num_days + 1):
-            current_date = req.start_date + timedelta(days=day_num - 1)
-            day_places = []
-            day_cost = 0
-            
-            # 1. FIX HOTEL: Chỉ check-in khách sạn vào Ngày 1 (và KHÔNG tính tiền ks vào ngân sách ăn chơi hằng ngày để AI không bị nghèo)
-            if day_num == 1 and hotels:
-                top_hotel = hotels[0][0]
-                day_places.append(top_hotel)
-                # Tạm thời không cộng day_cost += top_hotel.minPrice ở đây để nhường budget cho chỗ đi chơi
-            
-            # 2. CHỌN CHỖ ĐI CHƠI
-            for _ in range(min(places_per_day, len(activities))):
-                if place_idx < len(activities):
-                    place = activities[place_idx][0]
-                    # Nới lỏng budget ra một chút (x1.5) để dễ hiển thị demo
-                    if day_cost + place.minPrice <= daily_budget * 1.5:
-                        day_places.append(place)
-                        day_cost += place.minPrice
-                        place_idx += 1
-            
-            optimized_places = self.optimize_route(day_places)
-            day_items, current_hour, total_distance = [], self.MORNING_START, 0
-            
-            for idx, place in enumerate(optimized_places):
-                travel_time = 0
-                if idx > 0:
-                    distance = haversine_distance(optimized_places[idx - 1].coordinates, place.coordinates)
-                    travel_time = estimate_travel_time(distance)
-                    total_distance += distance
-                    current_hour += travel_time // 60
-                
-                start_time, end_time = self.schedule_time_for_activity(place.category, current_hour)
-                
-                # Format Tags đẹp cho UI
-                display_tags = [f"#{t.strip().title().replace(' ', '')}" for t in place.tags[:3]] if place.tags else ["#Danasoul"]
-
-                # Sửa câu mô tả cho đỡ ngô nghê
-                desc = f"Nhận phòng và nghỉ ngơi tại {place.name}." if place.category == 'hotel' else f"Khám phá và trải nghiệm tại {place.name}."
-
-                day_items.append({
-                    'place_id': place.id, 
-                    'title': place.name, 
-                    'category': place.category,
-                    'time': start_time, 
-                    'description': desc,
-                    'tags': display_tags,
-                    'image': place.image,
-                    'estimated_cost': (place.minPrice + place.maxPrice) / 2,
-                    'rating': place.rating, 
-                    'address': place.address,
-                })
-                current_hour = int(end_time.split(':')[0]) + 1
-            
-            itinerary_days.append({
-                'dayNumber': f"0{day_num}" if day_num < 10 else str(day_num), 
-                'dayLabel': f"Ngày {day_num}", 
-                'items': day_items,
-                'total_cost': day_cost, 
-                'total_distance_km': round(total_distance, 2)
-            })
-            
-        return {
-            'title': f"{req.destination} - {num_days} ngày", 
-            'destination': req.destination,
-            'days': itinerary_days, 
-            'total_estimated_cost': sum(d['total_cost'] for d in itinerary_days)
+        self.ACTIVITY_DURATION = {
+            'attraction': timedelta(minutes=120),
+            'restaurant': timedelta(minutes=90),
+            'hotel': timedelta(minutes=30),
+            'entertainment': timedelta(minutes=150),
+            'cafe': timedelta(minutes=60)
         }
 
+    def calculate_place_score(self, place: Place, daily_budget: float, user_profile: Dict, user_embedding=None) -> float:
+        score = 0.0
+        weights = user_profile['weights']
+
+        # Rating
+        score += (place.rating / 5.0) * 30 * weights.get('rating', 0.3)
+
+        # Interests + Embedding
+        interest_score = 0.0
+        if user_profile['interests'] and place.tags:
+            matches = len(set(user_profile['interests']) & set(place.tags))
+            interest_score += matches / max(len(user_profile['interests']), 1) * 0.65
+
+        if user_embedding is not None and place.embedding:
+            try:
+                sim = cosine_similarity(user_embedding, np.array(place.embedding).reshape(1, -1))[0][0]
+                interest_score += sim * 0.35
+            except:
+                pass
+
+        score += min(interest_score, 1.0) * 40
+
+        # Price
+        avg_price = (place.minPrice + place.maxPrice) / 2 if place.maxPrice else place.minPrice
+        if avg_price > 0 and daily_budget > 0:
+            allowed = daily_budget * 0.35
+            diff = abs(avg_price - allowed) / allowed
+            price_score = max(0, 30 * (1 - min(diff, 1.5))) * weights.get('price', 0.3)
+            score += price_score
+        else:
+            score += 20
+
+        return min(score, 100)
+
+    def optimize_route(self, day_places: List[Place]) -> List[Place]:
+        if not day_places:
+            return []
+        if len(day_places) == 1:
+            return day_places
+
+        unvisited = list(day_places)
+        route = []
+        hotel = next((p for p in unvisited if p.category == 'hotel'), None)
+        if hotel:
+            unvisited.remove(hotel)
+            route.append(hotel)
+        else:
+            route.append(unvisited.pop(0))
+
+        current = route[-1]
+        while unvisited:
+            nearest = min(unvisited, key=lambda p: haversine_distance(current.coordinates, p.coordinates))
+            route.append(nearest)
+            unvisited.remove(nearest)
+            current = nearest
+        return route
+
+    def build(self, req: ItineraryRequest, places: List[Place]) -> Dict:
+        user_profile = self.analyzer.analyze(req)
+        num_days = (req.end_date - req.start_date).days + 1
+        daily_budget = req.budget / max(num_days, 1)
+
+        # User embedding
+        user_embedding = None
+        if places and places[0].embedding:
+            try:
+                embs = [np.array(p.embedding) for p in places if p.embedding]
+                if embs:
+                    user_embedding = np.mean(embs[:10], axis=0).reshape(1, -1)
+            except:
+                pass
+
+        # Scoring
+        scored_places = [(place, self.calculate_place_score(place, daily_budget, user_profile, user_embedding)) 
+                        for place in places]
+        
+        valid_places = sorted([p for p in scored_places if p[1] > 12], key=lambda x: x[1], reverse=True)  # Giảm ngưỡng
+
+        places_per_day = {'slow': 3, 'moderate': 4, 'fast': 6}.get(req.travel_pace, 4)
+
+        hotels = [p[0] for p in valid_places if p[0].category == 'hotel']
+        activities = [p[0] for p in valid_places if p[0].category != 'hotel']
+
+        itinerary_days = []
+        activity_idx = 0
+
+        for day_num in range(1, num_days + 1):
+            day_places = []
+            day_cost = 0.0
+
+            if day_num == 1 and hotels:
+                day_places.append(hotels[0])
+
+            places_added = 0
+            while places_added < places_per_day and activity_idx < len(activities):
+                place = activities[activity_idx]
+                price = place.minPrice or 150000
+
+                if day_cost + price <= daily_budget * 1.6:   # Tăng giới hạn
+                    day_places.append(place)
+                    day_cost += price
+                    places_added += 1
+                activity_idx += 1
+
+            optimized_route = self.optimize_route(day_places)
+
+            # Build timeline
+            day_items = []
+            current_time = datetime(
+                year=req.start_date.year, month=req.start_date.month, day=req.start_date.day,
+                hour=self.MORNING_START, minute=0
+            ) + timedelta(days=day_num - 1)
+
+            for idx, place in enumerate(optimized_route):
+                if idx > 0:
+                    dist = haversine_distance(optimized_route[idx-1].coordinates, place.coordinates)
+                    travel_mins = estimate_travel_time(dist)
+                    current_time += timedelta(minutes=travel_mins)
+
+                start_str = current_time.strftime("%H:%M")
+                duration = self.ACTIVITY_DURATION.get(place.category, timedelta(minutes=90))
+                current_time += duration
+                end_str = current_time.strftime("%H:%M")
+
+                day_items.append({
+                    'place_id': place.id,
+                    'title': place.name,
+                    'category': place.category,
+                    'time': f"{start_str} - {end_str}",
+                    'description': f"Trải nghiệm {place.name} theo sở thích của bạn.",
+                    'tags': [f"#{t}" for t in place.tags[:3]] if place.tags else ["#Danasoul"],
+                    'image': place.image,
+                    'estimated_cost': (place.minPrice + place.maxPrice) / 2,
+                    'rating': place.rating,
+                    'address': place.address,
+                })
+
+            itinerary_days.append({
+                'dayNumber': f"0{day_num}" if day_num < 10 else str(day_num),
+                'dayLabel': f"Ngày {day_num}",
+                'items': day_items,
+                'total_cost': round(day_cost, 2),
+                'total_distance_km': 0
+            })
+
+        return {
+            'title': f"{req.destination} - {num_days} Ngày",
+            'destination': req.destination,
+            'days': itinerary_days,
+            'total_estimated_cost': round(sum(d['total_cost'] for d in itinerary_days), 2),
+            'user_profile_summary': user_profile['travel_style']
+        }
+
+
+# ==================== MAIN ENGINE ====================
 class MainAIEngine:
-    """ĐỒNG BỘ 100% VỚI MONGOOSE SCHEMA"""
     def __init__(self, db):
         self.places_collection = db['places']
-        self.user_prefs_collection = db['user_preferences']
         self.builder = SmartItineraryBuilder()
 
     def fetch_places(self, destination: str, interests: List[str], min_rating: float) -> List[Place]:
-        query = {
-            'rating': {'$gte': min_rating},
-            # Lấy địa điểm theo sở thích (tags) hoặc thuộc 4 category trong Mongoose của ông
-            '$or': [
-                {'tags': {'$in': interests}},
-                {'category': {'$in': ['hotel', 'restaurant', 'attraction', 'entertainment']}}
-            ]
-        }
-        docs = list(self.places_collection.find(query).limit(100))
+        query = {'category': {'$in': ['hotel', 'restaurant', 'attraction', 'entertainment', 'cafe']}}
+        
+        docs = list(self.places_collection.find(query).limit(150))
+
         places = []
         for doc in docs:
-            # Bắt đúng trường location.coordinates của Mongoose
             loc = doc.get('location', {})
-            coords = loc.get('coordinates', [108.2234, 16.0601]) # Mặc định Đà Nẵng nếu thiếu
+            metrics = doc.get('metrics', {})
             
-            # Bắt đúng mảng images của Mongoose
-            images = doc.get('images', [])
-            first_image = images[0] if images else "https://via.placeholder.com/500"
+            image = "https://via.placeholder.com/500"
+            if doc.get('images'):
+                img_obj = doc['images'][0]
+                image = img_obj.get('url') if isinstance(img_obj, dict) else img_obj
 
             places.append(Place(
-                id=str(doc['_id']), 
-                name=doc.get('name', 'Chưa rõ'), 
+                id=str(doc['_id']),
+                name=doc.get('name', 'Unknown'),
                 category=doc.get('category', 'attraction'),
-                coordinates=coords, 
-                rating=doc.get('rating', 5.0),
-                minPrice=doc.get('minPrice', 0), 
-                maxPrice=doc.get('maxPrice', 0),
-                address=doc.get('address', ''), 
+                coordinates=loc.get('coordinates', [108.2022, 16.0544]),
+                rating=max(metrics.get('rating', 4.0), 4.0),
+                minPrice=metrics.get('price', 150000),
+                maxPrice=metrics.get('price', 150000) * 1.6,
+                address=loc.get('address', ''),
                 tags=doc.get('tags', []),
-                image=first_image, # Truyền ảnh vào đây
-                amenities=doc.get('amenities'), 
-                ticketPrice=doc.get('ticketPrice'),
-                activities=doc.get('activities'), 
-                tourDuration=doc.get('tourDuration')
+                image=image,
+                embedding=doc.get('embedding')
             ))
+
+        print(f"🔍 Đã tải {len(places)} địa điểm từ MongoDB")
         return places
 
     def run_itinerary_generation(self, req: ItineraryRequest) -> Dict:
         places = self.fetch_places(req.destination, req.interests, req.min_rating)
-        if not places: return None
-        return self.builder.build(req, places, self.user_prefs_collection)
+        if not places:
+            return {"error": "Không tìm thấy địa điểm"}
+        return self.builder.build(req, places)

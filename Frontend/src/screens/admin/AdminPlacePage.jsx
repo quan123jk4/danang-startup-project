@@ -24,6 +24,10 @@ const CATEGORY_CONFIG = {
     label: "Khu Giải trí",
     color: "bg-purple-50 text-purple-600 border-purple-200",
   },
+  cafe: {
+    label: "Quán Cafe",
+    color: "bg-amber-50 text-amber-700 border-amber-300",
+  },
   default: {
     label: "Địa điểm khác",
     color: "bg-slate-50 text-slate-600 border-slate-200",
@@ -64,7 +68,7 @@ export default function AdminPlacePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [currentPage, setCurrentPage] = useState(1);
-  const [isUploading, setIsUploading] = useState(false); // State cho Import Excel
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
   const placesPerPage = 5;
 
@@ -102,7 +106,7 @@ export default function AdminPlacePage() {
     isOpen: false,
     title: "",
     message: "",
-    type: "danger", // success, warning, danger
+    type: "danger",
     isAlertOnly: false,
     onConfirm: null,
   });
@@ -221,20 +225,29 @@ export default function AdminPlacePage() {
 
       const token = localStorage.getItem("token");
 
+      // Cập nhật Payload để tương thích với cả DB Schema mới và API cũ
       const payload = {
         name: formData.name,
         category: formData.category,
-        address: formData.address,
-        phone: formData.phone,
-        minPrice: minP,
-        maxPrice: maxP,
         description: formData.description,
-        image: formData.image,
         tags: formData.tags,
         location: {
           type: "Point",
-          coordinates: [parseFloat(formData.lng), parseFloat(formData.lat)],
+          coordinates: [
+            parseFloat(formData.lng) || 0,
+            parseFloat(formData.lat) || 0,
+          ],
+          address: formData.address,
+          phone: formData.phone,
         },
+        images: formData.image ? [{ url: formData.image, isMain: true }] : [],
+
+        // Backup các trường cũ để Backend không bị thiếu data nếu chưa kịp update
+        address: formData.address,
+        phone: formData.phone,
+        image: formData.image,
+        minPrice: minP,
+        maxPrice: maxP,
       };
 
       if (formData.category === "hotel") {
@@ -279,6 +292,7 @@ export default function AdminPlacePage() {
           isAlertOnly: true,
         });
 
+        // Reset form
         setFormData({
           name: "",
           category: "attraction",
@@ -334,16 +348,16 @@ export default function AdminPlacePage() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("excelFile", file);
+    const formDataFile = new FormData();
+    formDataFile.append("excelFile", file);
 
     setIsUploading(true);
 
     try {
       const token = localStorage.getItem("token");
       const response = await axios.post(
-        `${API_BASE_URL}/import-excel`, // Sử dụng API_BASE_URL
-        formData,
+        `${API_BASE_URL}/import-excel`,
+        formDataFile,
         {
           headers: {
             "Content-Type": "multipart/form-data",
@@ -360,7 +374,7 @@ export default function AdminPlacePage() {
           type: "success",
           isAlertOnly: true,
         });
-        fetchPlaces(); // Refresh bảng dữ liệu
+        fetchPlaces();
       }
     } catch (error) {
       console.error("Lỗi upload:", error);
@@ -385,7 +399,7 @@ export default function AdminPlacePage() {
     setModal({
       isOpen: true,
       title: "Xóa địa điểm",
-      message: `Bạn có chắc chắn muốn xóa "${placeName}" khỏi hệ thống Danasoul? Toàn bộ dữ liệu Menu, Review liên quan có thể bị ảnh hưởng!`,
+      message: `Bạn có chắc chắn muốn xóa "${placeName || "Địa điểm này"}" khỏi hệ thống Danasoul? Toàn bộ dữ liệu Menu, Review liên quan có thể bị ảnh hưởng!`,
       type: "danger",
       isAlertOnly: false,
       onConfirm: () => executeDeletePlace(placeId),
@@ -401,6 +415,16 @@ export default function AdminPlacePage() {
       });
       if (res.data.success) {
         setPlaces(places.filter((p) => p._id !== placeId));
+        setModal({
+          isOpen: true,
+          title: "Xóa thành công",
+          message:
+            res.data.message ||
+            "Địa điểm đã được gỡ bỏ hoàn toàn khỏi hệ thống Danasoul!",
+          type: "success",
+          isAlertOnly: true,
+          onConfirm: null,
+        });
       }
     } catch (err) {
       setModal({
@@ -417,12 +441,27 @@ export default function AdminPlacePage() {
   // LOGIC LỌC VÀ PHÂN TRANG
   // ==========================================
   const filteredPlaces = places.filter((p) => {
-    const locString = typeof p.address === "string" ? p.address : "";
+    // Tương thích với cả schema cũ (p.address) và mới (p.location.address)
+    const locString =
+      typeof p.location?.address === "string"
+        ? p.location.address
+        : typeof p.address === "string"
+          ? p.address
+          : "";
+    const nameString =
+      typeof p.name === "string"
+        ? p.name
+        : typeof p.title === "string"
+          ? p.title
+          : "";
+
     const matchesSearch =
-      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      nameString.toLowerCase().includes(searchTerm.toLowerCase()) ||
       locString.toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchesCategory =
       categoryFilter === "ALL" || p.category === categoryFilter;
+
     return matchesSearch && matchesCategory;
   });
 
@@ -433,6 +472,36 @@ export default function AdminPlacePage() {
     indexOfLastPlace,
   );
   const totalPages = Math.ceil(filteredPlaces.length / placesPerPage);
+
+  const getPaginationRange = () => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+    let l;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (
+        i === 1 ||
+        i === totalPages ||
+        (i >= currentPage - delta && i <= currentPage + delta)
+      ) {
+        range.push(i);
+      }
+    }
+
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (i - l > 2) {
+          rangeWithDots.push("...");
+        }
+      }
+      rangeWithDots.push(i);
+      l = i;
+    }
+    return rangeWithDots;
+  };
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
   const prevPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1));
@@ -589,6 +658,17 @@ export default function AdminPlacePage() {
                           CATEGORY_CONFIG[p.category] ||
                           CATEGORY_CONFIG.default;
 
+                        // Xử lý tương thích hiển thị hình ảnh (Schema cũ và mới)
+                        let displayImage = null;
+                        if (p.images && p.images.length > 0) {
+                          displayImage = p.images[0].url || p.images[0];
+                        } else if (p.image) {
+                          displayImage = p.image;
+                        }
+
+                        // Xử lý hiển thị địa chỉ
+                        const displayAddress = p.location?.address || p.address;
+
                         return (
                           <tr
                             key={p._id}
@@ -597,10 +677,10 @@ export default function AdminPlacePage() {
                             {/* CỘT 1: THÔNG TIN */}
                             <td className="px-8 py-4">
                               <div className="flex items-center gap-5">
-                                {p.images && p.images.length > 0 ? (
+                                {displayImage ? (
                                   <img
-                                    src={p.images[0]}
-                                    alt={p.name}
+                                    src={displayImage}
+                                    alt={p.name || p.title}
                                     className="w-16 h-16 rounded-[14px] object-cover shadow-sm border border-slate-100 group-hover:scale-105 transition-transform"
                                   />
                                 ) : (
@@ -623,13 +703,13 @@ export default function AdminPlacePage() {
                                 <div className="flex flex-col">
                                   <span
                                     className="font-extrabold text-[15px] text-slate-800 mb-1 line-clamp-1"
-                                    title={p.name}
+                                    title={p.name || p.title}
                                   >
-                                    {p.name || "Chưa có tên"}
+                                    {p.name || p.title || "Chưa có tên"}
                                   </span>
                                   <span
                                     className="text-xs font-medium text-slate-500 flex items-center gap-1.5 line-clamp-1"
-                                    title={p.address}
+                                    title={displayAddress}
                                   >
                                     <svg
                                       className="w-3.5 h-3.5 text-slate-400 shrink-0"
@@ -650,8 +730,8 @@ export default function AdminPlacePage() {
                                         d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                                       />
                                     </svg>
-                                    {p.address
-                                      ? p.address
+                                    {displayAddress
+                                      ? displayAddress
                                       : p.location?.coordinates
                                         ? `[${p.location.coordinates[1].toFixed(4)}, ${p.location.coordinates[0].toFixed(4)}]`
                                         : "Chưa cập nhật tọa độ"}
@@ -717,7 +797,10 @@ export default function AdminPlacePage() {
                                 </button>
                                 <button
                                   onClick={() =>
-                                    handleDeletePlaceClick(p._id, p.name)
+                                    handleDeletePlaceClick(
+                                      p._id,
+                                      p.name || p.title,
+                                    )
                                   }
                                   className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all shadow-sm"
                                   title="Xóa địa điểm"
@@ -749,64 +832,88 @@ export default function AdminPlacePage() {
 
             {/* PAGINATION */}
             {!isLoading && totalPages > 1 && (
-              <div className="bg-slate-50 border-t border-slate-100 px-8 py-4 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500">
+              <div className="bg-slate-50 border-t border-slate-100 px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span className="text-xs font-bold text-slate-400 tracking-wide text-center sm:text-left">
                   Hiển thị{" "}
-                  <span className="text-[#002045]">
+                  <span className="text-[#002045] font-black">
                     {indexOfFirstPlace + 1}
                   </span>{" "}
                   đến{" "}
-                  <span className="text-[#002045]">
+                  <span className="text-[#002045] font-black">
                     {Math.min(indexOfLastPlace, filteredPlaces.length)}
                   </span>{" "}
-                  trong số {filteredPlaces.length}
+                  trong số{" "}
+                  <span className="text-[#002045] font-black">
+                    {filteredPlaces.length}
+                  </span>{" "}
+                  địa điểm
                 </span>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-1.5 flex-wrap justify-center">
                   <button
+                    type="button"
                     onClick={prevPage}
                     disabled={currentPage === 1}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-all"
+                    className="w-8 h-8 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-all cursor-pointer disabled:cursor-not-allowed"
                   >
                     <svg
-                      className="w-4 h-4"
+                      className="w-3.5 h-3.5"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
+                      strokeWidth={3}
                     >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2.5}
                         d="M15 19l-7-7 7-7"
                       />
                     </svg>
                   </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (num) => (
+
+                  {getPaginationRange().map((num, idx) => {
+                    if (num === "...") {
+                      return (
+                        <span
+                          key={`dots-${idx}`}
+                          className="w-8 h-8 flex items-center justify-center text-xs font-bold text-slate-400 select-none"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    return (
                       <button
-                        key={num}
+                        key={`page-${num}`}
+                        type="button"
                         onClick={() => paginate(num)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all shadow-sm ${currentPage === num ? "bg-[#C4391D] text-white" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
+                        className={`w-8 h-8 flex items-center justify-center rounded-xl text-xs font-black transition-all shadow-sm cursor-pointer ${
+                          currentPage === num
+                            ? "bg-[#C4391D] text-white scale-105"
+                            : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                        }`}
                       >
                         {num}
                       </button>
-                    ),
-                  )}
+                    );
+                  })}
+
                   <button
+                    type="button"
                     onClick={nextPage}
                     disabled={currentPage === totalPages}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-50 transition-all"
+                    className="w-8 h-8 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-all cursor-pointer disabled:cursor-not-allowed"
                   >
                     <svg
-                      className="w-4 h-4"
+                      className="w-3.5 h-3.5"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
+                      strokeWidth={3}
                     >
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2.5}
                         d="M9 5l7 7-7 7"
                       />
                     </svg>

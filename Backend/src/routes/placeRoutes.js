@@ -17,6 +17,7 @@ router.get("/:id/insights", optionalProtect, placeController.getPlaceInsights);
 
 // Chỉ Admin mới được thêm địa điểm (Tạm thời dùng protect để test)
 router.post("/", protect, authorize("admin"), placeController.createPlace);
+router.delete("/:id", protect, authorize("admin"), placeController.deletePlace);
 router.post(
   "/import-excel",
   upload.single("excelFile"),

@@ -87,9 +87,20 @@ export default function ExplorePage() {
   const [selectedTag, setSelectedTag] = useState("");
   const [activeTab, setActiveTab] = useState("all");
 
+  // ==========================================
+  // 🌟 ĐỊNH CẤU HÌNH PHÂN TRANG: 9 Ô / TRANG
+  // ==========================================
+  const [currentPage, setCurrentPage] = useState(1);
+  const placesPerPage = 9;
+
   useEffect(() => {
     fetchPlaces();
   }, []);
+
+  // Đưa về trang 1 nếu người dùng thực hiện lọc/tìm kiếm dữ liệu mới
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, selectedTag, activeTab]);
 
   const fetchPlaces = async () => {
     try {
@@ -116,253 +127,372 @@ export default function ExplorePage() {
     return matchesSearch && matchesTag;
   });
 
+  // ==========================================
+  // THUẬT TOÁN CHIA KHỐI TRANG ĐỘNG
+  // ==========================================
+  const indexOfLastPlace = currentPage * placesPerPage;
+  const indexOfFirstPlace = indexOfLastPlace - placesPerPage;
+  const currentPlaces = filteredPlaces.slice(
+    indexOfFirstPlace,
+    indexOfLastPlace,
+  );
+  const totalPages = Math.ceil(filteredPlaces.length / placesPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+  const prevPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1));
+  const nextPage = () =>
+    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+
+  // Rút gọn dãy số phân trang quá dài thành dấu ...
+  const getPaginationRange = () => {
+    const delta = 1;
+    const range = [];
+    const rangeWithDots = [];
+    let l;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (
+        i === 1 ||
+        i === totalPages ||
+        (i >= currentPage - delta && i <= currentPage + delta)
+      ) {
+        range.push(i);
+      }
+    }
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) rangeWithDots.push(l + 1);
+        else if (i - l > 2) rangeWithDots.push("...");
+      }
+      rangeWithDots.push(i);
+      l = i;
+    }
+    return rangeWithDots;
+  };
+
   return (
     <div className="bg-[#E5EDF4] min-h-screen w-full flex flex-col items-center relative pb-0 overflow-hidden">
       <div className="w-full max-w-[1280px] bg-white shadow-2xl rounded-none flex flex-col min-h-screen">
-        {/* 1. GẮN NAVBAR DÙNG CHUNG CỦA ÔNG VÀO ĐÂY */}
+        {/* NAVBAR */}
         <Navbar />
 
-        {/* KHỐI NỘI DUNG CHÍNH CHẠY GIỮA LAYER */}
-        <div className="w-full flex-1 flex px-6 md:px-12 py-10 gap-10 items-start">
-          {/* CỘT TRÁI: SIDEBAR BỘ LỌC */}
-          <aside className="w-64 space-y-6 sticky top-28 shrink-0">
-            {/* Ô tìm kiếm */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Tìm kiếm"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                className="w-full bg-[#f8fafc] border border-slate-200 text-xs rounded-xl pl-10 pr-4 py-3 outline-none focus:border-[#C4391D] transition-colors font-medium text-slate-700"
-              />
-              <svg
-                className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 transform -translate-y-1/2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        {/* KHỐI NỘI DUNG CHÍNH */}
+        <div className="w-full flex-1 flex flex-col lg:flex-row px-6 md:px-12 py-10 gap-10 items-start">
+          {/* ==========================================
+              CỘT TRÁI: SIDEBAR BỘ LỌC CHỈNH LẠI CỰC ĐẸP
+             ========================================== */}
+          <aside className="w-full lg:w-64 space-y-5 sticky top-28 shrink-0">
+            {/* Hộp Tìm kiếm độc lập */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.01)] space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1">
+                Tìm kiếm nhanh
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Nhập tên, địa danh..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className="w-full bg-[#f8fafc] border border-slate-200 text-xs rounded-xl pl-10 pr-4 py-3 outline-none focus:border-[#C4391D] focus:bg-white transition-all font-semibold text-slate-700 shadow-inner"
                 />
-              </svg>
+                <svg
+                  className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 transform -translate-y-1/2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </div>
             </div>
 
-            {/* Khối Tags phổ biến */}
-            <div className="flex flex-wrap gap-1.5 border-b border-slate-100 pb-5">
-              {POPULAR_TAGS.map((tag) => (
+            {/* Hộp chứa Bộ lọc chức năng & Tags hệ thống */}
+            <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.01)] space-y-4">
+              {/* Cụm Tags */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1">
+                  Từ khóa nổi bật
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {POPULAR_TAGS.map((tag) => {
+                    const isSelected = selectedTag === tag;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setSelectedTag(isSelected ? "" : tag)}
+                        className={`text-[10px] font-extrabold px-3 py-1.5 rounded-lg transition-all border cursor-pointer uppercase tracking-wider ${
+                          isSelected
+                            ? "bg-[#C4391D] text-white border-[#C4391D] shadow-sm shadow-red-500/20 scale-[1.02]"
+                            : "bg-slate-50 text-slate-500 border-slate-200/60 hover:bg-slate-100 hover:text-slate-700"
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <hr className="border-slate-100/80" />
+
+              {/* Nhóm Menu chức năng thiết kế dạng list cực mượt */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-1 mb-1">
+                  Thư mục cá nhân
+                </label>
+
                 <button
-                  key={tag}
-                  onClick={() => setSelectedTag(selectedTag === tag ? "" : tag)}
-                  className={`text-[11px] font-bold px-2.5 py-1.5 rounded-md transition-all border cursor-pointer ${
-                    selectedTag === tag
-                      ? "bg-[#C4391D] text-white border-[#C4391D]"
-                      : "bg-blue-50/50 text-blue-600 border-blue-100 hover:bg-blue-100/50"
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("all");
+                    setSelectedTag("");
+                  }}
+                  className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all border ${activeTab === "all" && !selectedTag ? "bg-red-50/60 text-[#C4391D] border-red-100/50 shadow-sm" : "text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900"}`}
                 >
-                  {tag}
+                  🌐 Tất cả địa điểm
                 </button>
-              ))}
-            </div>
 
-            {/* Khối Menu chức năng */}
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => {
-                  setActiveTab("favorite");
-                  setSelectedTag("");
-                }}
-                className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-xs font-bold transition-all ${activeTab === "favorite" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
-              >
-                <svg
-                  className="w-4 h-4 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("favorite");
+                    setSelectedTag("");
+                  }}
+                  className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all border ${activeTab === "favorite" ? "bg-blue-50/60 text-blue-700 border-blue-100/40 shadow-sm" : "text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900"}`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                  />
-                </svg>
-                List yêu thích
-              </button>
+                  ❤️ List yêu thích
+                </button>
 
-              <button
-                onClick={() => {
-                  setActiveTab("watchlater");
-                }}
-                className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-xs font-bold transition-all ${activeTab === "watchlater" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
-              >
-                <svg
-                  className="w-4 h-4 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("watchlater")}
+                  className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all border ${activeTab === "watchlater" ? "bg-amber-50/60 text-amber-700 border-amber-100/40 shadow-sm" : "text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900"}`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Xem sau
-              </button>
+                  🕒 Xem sau
+                </button>
 
-              <button
-                onClick={() => {
-                  setActiveTab("checkin");
-                }}
-                className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-xs font-bold transition-all ${activeTab === "checkin" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
-              >
-                <svg
-                  className="w-4 h-4 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("checkin")}
+                  className={`cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all border ${activeTab === "checkin" ? "bg-emerald-50/60 text-emerald-700 border-emerald-100/40 shadow-sm" : "text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900"}`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                  />
-                </svg>
-                Đã checkin
-              </button>
+                  📍 Đã checkin
+                </button>
 
-              <button
-                onClick={() =>
-                  alert("Chức năng gợi ý lộ trình đang được AI xử lý!")
-                }
-                className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
-              >
-                <svg
-                  className="w-4 h-4 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                <button
+                  type="button"
+                  onClick={() =>
+                    alert("Chức năng gợi ý lộ trình đang được AI xử lý!")
+                  }
+                  className="cursor-pointer flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl text-xs font-bold text-slate-600 border border-transparent hover:bg-indigo-50/40 hover:text-indigo-600 transition-all"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
-                Gợi ý từ AI
-              </button>
+                  💡 Gợi ý từ AI
+                </button>
+              </div>
             </div>
           </aside>
 
-          {/* CỘT PHẢI: GRID CARD ĐỊA ĐIỂM */}
-          <main className="flex-1">
-            <div className="pb-4 mb-8">
-              <h2 className="text-[28px] font-extrabold text-[#002045] uppercase tracking-tight">
+          {/* ==========================================
+              CỘT PHẢI: GRID CARD 9 Ô ĐỊA ĐIỂM & PHÂN TRANG
+             ========================================== */}
+          <main className="flex-1 w-full">
+            <div className="pb-4 mb-6">
+              <h2 className="text-[26px] font-black text-[#002045] uppercase tracking-tight">
                 TRENDING NOW
               </h2>
-              <p className="text-slate-500 text-xs mt-1">
+              <p className="text-slate-400 text-xs font-medium mt-0.5">
                 Những điểm đến đang thu hút sự chú ý của cộng đồng Danasoul
                 Azure tuần này.
               </p>
             </div>
 
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <div className="animate-spin w-8 h-8 border-4 border-[#C4391D] border-t-transparent rounded-full"></div>
-                <p className="text-xs font-bold text-slate-400">
-                  Đang đồng bộ dữ liệu địa điểm...
+              <div className="flex flex-col items-center justify-center py-24 gap-3 bg-white border border-slate-100 rounded-3xl">
+                <div className="animate-spin w-7 h-7 border-4 border-[#C4391D] border-t-transparent rounded-full"></div>
+                <p className="text-xs font-bold text-slate-400 tracking-wider">
+                  Đang đồng bộ luồng dữ liệu...
                 </p>
               </div>
-            ) : filteredPlaces.length === 0 ? (
+            ) : currentPlaces.length === 0 ? (
               <div className="text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                <p className="text-sm font-medium text-slate-400 italic">
+                <p className="text-xs font-bold text-slate-400 italic">
                   Không tìm thấy địa điểm nào khớp với bộ lọc hiện tại.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredPlaces.map((place) => (
-                  <div
-                    key={place._id}
-                    onClick={() => navigate(`/explore/${place._id}`)}
-                    className="bg-white rounded-[16px] shadow-[0_8px_24px_rgba(0,0,0,0.02)] border border-slate-100 overflow-hidden flex flex-col group hover:shadow-[0_12px_30px_rgba(0,0,0,0.06)] transition-all duration-300"
-                  >
-                    <div className="h-48 overflow-hidden relative bg-slate-100">
-                      {place.images && place.images.length > 0 ? (
+              <div className="space-y-10">
+                {/* GRID 3 CỘT X 3 HÀNG = CÂN ĐỐI 9 Ô TRANG */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {currentPlaces.map((place) => (
+                    <div
+                      key={place._id}
+                      onClick={() => navigate(`/explore/${place._id}`)}
+                      className="bg-white rounded-[24px] shadow-[0_4px_20px_rgba(0,0,0,0.01)] border border-slate-100 overflow-hidden flex flex-col justify-between group hover:shadow-[0_12px_30px_rgba(0,0,0,0.05)] hover:border-slate-200/60 transition-all duration-300 relative cursor-pointer"
+                    >
+                      <div className="h-48 overflow-hidden relative bg-slate-50">
                         <img
-                          src={place.images[0]}
+                          src={
+                            // LẤY ẢNH ĐÚNG FORMAT: MẢNG OBJECT CỦA MONGODB
+                            Array.isArray(place.images) &&
+                            place.images.length > 0
+                              ? typeof place.images[0] === "string"
+                                ? place.images[0]
+                                : place.images[0].url // Xử lý trường hợp là Object {url: "..."}
+                              : "https://images.unsplash.com/photo-1555939594-58d7cb561ad1"
+                          }
                           alt={place.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          // THÊM CÁI NÀY ĐỂ TRÁNH ẢNH LỖI (FALLBACK)
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src =
+                              "https://images.unsplash.com/photo-1555939594-58d7cb561ad1";
+                          }}
+                          className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500 ease-out"
                         />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs font-bold">
-                          No Image
-                        </div>
-                      )}
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          alert(`Đã lưu ${place.name}!`);
-                        }}
-                        className="cursor-pointer absolute top-3 right-3 w-8 h-8 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center text-slate-700 shadow-sm hover:bg-white hover:scale-105 transition-all"
-                      >
-                        <svg
-                          className="w-4 h-4 stroke-2"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
+                        {/* Nút bookmark */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            alert(`Đã lưu ${place.name}!`);
+                          }}
+                          className="cursor-pointer absolute top-3 right-3 w-8 h-8 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center text-slate-700 shadow-sm hover:bg-white hover:scale-105 transition-all"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-
-                    <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
-                      <div>
-                        <h3 className="font-extrabold text-[15px] text-[#002045] line-clamp-1 group-hover:text-[#C4391D] transition-colors">
-                          {place.name}
-                        </h3>
-                        <p className="text-[11px] font-medium text-slate-400 mt-1 line-clamp-2">
-                          {place.description ||
-                            "Chưa cập nhật dòng mô tả ngắn gọn cho địa danh này."}
-                        </p>
+                          <svg
+                            className="w-4 h-4 stroke-2"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                            />
+                          </svg>
+                        </button>
                       </div>
 
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-50/80 px-2.5 py-1 rounded-md border border-slate-100 uppercase tracking-wider">
-                          {place.category === "attraction"
-                            ? "Thắng cảnh"
-                            : place.category === "restaurant"
-                              ? "Nhà hàng"
-                              : place.category === "hotel"
-                                ? "Lưu trú"
-                                : "Giải trí"}
-                        </span>
-                        <div className="text-slate-300 group-hover:text-[#002045] transition-colors">
-                          {CATEGORY_ICONS[place.category] ||
-                            CATEGORY_ICONS.attraction}
+                      {/* Nội dung thông tin Card */}
+                      <div className="p-5 flex-grow flex flex-col justify-between gap-4">
+                        <div className="space-y-1.5">
+                          <h3 className="font-extrabold text-[15px] text-[#002045] line-clamp-1 group-hover:text-[#C4391D] transition-colors tracking-tight">
+                            {place.name}
+                          </h3>
+                          <p className="text-[11px] font-semibold text-slate-400 line-clamp-2 leading-relaxed">
+                            {place.description ||
+                              "Chưa cập nhật dòng mô tả ngắn gọn cho địa danh này."}
+                          </p>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-2.5 border-t border-slate-50">
+                          <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/50 uppercase tracking-widest">
+                            {place.category === "attraction"
+                              ? "Thắng cảnh"
+                              : place.category === "restaurant"
+                                ? "Nhà hàng"
+                                : place.category === "hotel"
+                                  ? "Lưu trú"
+                                  : "Giải trí"}
+                          </span>
+                          <div className="text-slate-300 group-hover:text-[#002045] transition-colors scale-95 group-hover:scale-100 duration-300">
+                            {CATEGORY_ICONS[place.category] ||
+                              CATEGORY_ICONS.attraction}
+                          </div>
                         </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+
+                {/* ==========================================
+                    CỤM NÚT PHÂN TRANG (PAGINATION) CHUẨN ĐẸP
+                   ========================================== */}
+                {totalPages > 1 && (
+                  <div className="pt-6 flex items-center justify-center gap-1.5 border-t border-slate-100">
+                    {/* Nút lùi trang */}
+                    <button
+                      type="button"
+                      onClick={prevPage}
+                      disabled={currentPage === 1}
+                      className="w-8 h-8 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white transition-all cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 19l-7-7 7-7"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* Dãy số trang thông minh với dấu ... */}
+                    {getPaginationRange().map((num, idx) => {
+                      if (num === "...") {
+                        return (
+                          <span
+                            key={`dots-${idx}`}
+                            className="w-8 h-8 flex items-center justify-center text-xs font-bold text-slate-300 select-none"
+                          >
+                            ...
+                          </span>
+                        );
+                      }
+                      return (
+                        <button
+                          key={`page-${num}`}
+                          type="button"
+                          onClick={() => paginate(num)}
+                          className={`w-8 h-8 flex items-center justify-center rounded-xl text-xs font-black transition-all border cursor-pointer ${
+                            currentPage === num
+                              ? "bg-[#002045] text-white border-[#002045] shadow-sm scale-105"
+                              : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-800"
+                          }`}
+                        >
+                          {num}
+                        </button>
+                      );
+                    })}
+
+                    {/* Nút tiến trang */}
+                    <button
+                      type="button"
+                      onClick={nextPage}
+                      disabled={currentPage === totalPages}
+                      className="w-8 h-8 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white transition-all cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </button>
                   </div>
-                ))}
+                )}
               </div>
             )}
           </main>
         </div>
-
-        {/* 2. GẮN FOOTER DÙNG CHUNG CỦA ÔNG VÀO CUỐI CONTAINER */}
         <Footer />
       </div>
     </div>

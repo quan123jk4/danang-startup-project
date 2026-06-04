@@ -45,7 +45,7 @@ const trendingPlaces = [
     location: "Sơn Trà, Đà Nẵng",
     tag: "VĂN HÓA",
     image:
-      "https://images.unsplash.com/photo-1678184518712-421b4a0350d7?q=80&w=500",
+      "https://kenhhomestay.com/wp-content/uploads/2020/04/Chua-Linh-Ung-1..jpg",
     checkins: "2.4K",
     points: 50,
   },
@@ -55,7 +55,7 @@ const trendingPlaces = [
     location: "Quận Hải Châu",
     tag: "DI SẢN",
     image:
-      "https://images.unsplash.com/photo-1596402181057-798888b14a93?q=80&w=500",
+      "https://dulich3mien.vn/wp-content/uploads/2021/12/hinh-anh-bao-tang-cham-da-nang-ngay-nay-.jpg",
     checkins: "1.1K",
     points: 50,
   },
@@ -65,7 +65,7 @@ const trendingPlaces = [
     location: "Quận Ngũ Hành Sơn",
     tag: "THIÊN NHIÊN",
     image:
-      "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=500",
+      "https://thuthuatnhanh.com/wp-content/uploads/2021/11/Hinh-anh-nui-Ngu-Hanh-Son.jpg",
     checkins: "3.8K",
     points: 50,
   },
@@ -157,131 +157,56 @@ const CheckinPage = () => {
   // ==========================================
   // HÀM XỬ LÝ CHÍNH: CHECK-IN VÀ REVIEW CÙNG LÚC
   // ==========================================
-  const processCheckinRequest = async (token, lat, lng) => {
+  const processCheckin = async (lat, lng) => {
+    setIsLoading(true);
+    const token = localStorage.getItem("token");
+
     try {
-      // BƯỚC 1: GỌI API CHECK-IN
-      const checkinResponse = await fetch(
-        "http://localhost:5000/api/v1/checkin",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            placeId: formData.placeId,
-            userLat: lat,
-            userLng: lng,
-            caption: formData.caption,
-            rating: formData.rating,
-            media: previewImage ? [previewImage] : [],
-          }),
+      const res = await fetch("http://localhost:5000/api/v1/checkin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-      );
+        body: JSON.stringify({
+          ...formData,
+          userLat: lat,
+          userLng: lng,
+          media: previewImage ? [previewImage] : [],
+        }),
+      });
+      const result = await res.json();
 
-      const checkinResult = await checkinResponse.json();
-
-      if (checkinResponse.ok && checkinResult.success) {
-        let reviewAdded = false;
-        if (formData.caption && formData.caption.trim() !== "") {
-          try {
-            const reviewResponse = await fetch(
-              "http://localhost:5000/api/v1/reviews",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  placeId: formData.placeId,
-                  rating: formData.rating,
-                  comment: formData.caption, // Backend của ông yêu cầu key là 'comment'
-                  media: previewImage ? [previewImage] : [],
-                }),
-              },
-            );
-            if (reviewResponse.ok) {
-              reviewAdded = true;
-            } else {
-              console.error("Tạo Review thất bại (Nhưng check-in vẫn OK)");
-            }
-          } catch (err) {
-            console.error("Lỗi khi gọi API tạo Review:", err);
-          }
-        }
-
-        // BƯỚC 3: CẬP NHẬT GIAO DIỆN
-        const successMsg = reviewAdded
-          ? "Check-in thành công & Đã đăng bài đánh giá!"
-          : checkinResult.message || "Check-in thành công!";
-
-        setStatus({ type: "success", message: successMsg });
-        setFormData({ ...formData, caption: "", rating: 5 });
-        setPreviewImage(null);
-
-        // Cộng điểm UI giả lập
-        let earned = 10;
-        if (formData.caption && previewImage && formData.rating) earned += 40;
-        else if (formData.caption || previewImage || formData.rating)
-          earned += 10;
-
-        setUserPoints((prev) => prev + earned);
-      } else {
+      if (result.success) {
         setStatus({
-          type: "error",
-          message: checkinResult.message || "Check-in thất bại!",
+          type: "success",
+          message: "Check-in thành công! +50 điểm.",
         });
+        setUserPoints((p) => p + 50);
+        setFormData({ placeId: "", caption: "", rating: 5 });
+        setPreviewImage(null);
+        setSearchTerm("");
+      } else {
+        setStatus({ type: "error", message: result.message });
       }
-    } catch (error) {
-      setStatus({ type: "error", message: "Lỗi kết nối máy chủ!" });
+    } catch {
+      setStatus({ type: "error", message: "Lỗi kết nối server!" });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.placeId) {
-      setStatus({ type: "error", message: "Vui lòng chọn một địa điểm!" });
+    const selected = placesList.find((p) => p._id === formData.placeId);
+    if (!selected) {
+      setStatus({ type: "error", message: "Hãy chọn địa điểm!" });
       return;
     }
 
-    setIsLoading(true);
-    setStatus({ type: "info", message: "Đang xác thực dữ liệu..." });
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setStatus({ type: "error", message: "Vui lòng đăng nhập để Check-in!" });
-      setIsLoading(false);
-      return;
-    }
-
-    if (IS_DEMO_MODE) {
-      processCheckinRequest(token, 16.0611, 108.2278);
-    } else {
-      if (!navigator.geolocation) {
-        setStatus({ type: "error", message: "Trình duyệt không hỗ trợ GPS!" });
-        setIsLoading(false);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) =>
-          processCheckinRequest(
-            token,
-            position.coords.latitude,
-            position.coords.longitude,
-          ),
-        (error) => {
-          setIsLoading(false);
-          setStatus({
-            type: "error",
-            message: "Vui lòng bật GPS để Check-in!",
-          });
-        },
-        { enableHighAccuracy: true, timeout: 10000 },
-      );
-    }
+    // Dùng tọa độ từ DB để giả lập check-in thành công
+    const [lng, lat] = selected.location.coordinates;
+    processCheckin(lat, lng);
   };
 
   return (

@@ -316,59 +316,296 @@ exports.getPlaceInsights = async (req, res) => {
 exports.importPlacesFromExcel = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "Vui lòng upload file Excel!" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng upload file Excel!" });
     }
 
     const workbook = xlsx.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rawData = xlsx.utils.sheet_to_json(worksheet);
+    let allFormattedPlaces = [];
 
-    if (rawData.length === 0) {
-      return res.status(400).json({ success: false, message: "File Excel rỗng!" });
-    }
+    // Duyệt qua toàn bộ các Sheet có trong file Excel mới
+    workbook.SheetNames.forEach((sheetName) => {
+      const worksheet = workbook.Sheets[sheetName];
+      // Sử dụng { header: 1 } để xuất dữ liệu dưới dạng mảng của các hàng
+      const rows = xlsx.utils.sheet_to_json(worksheet, { header: 1 });
 
-    const formattedData = rawData.map((row) => {
-      let tagsArray = row.Tags ? row.Tags.toString().split(",").map(tag => tag.trim()) : [];
-      let imagesArray = row.Images ? row.Images.toString().split(",").map(img => img.trim()) : [];
+      if (rows.length < 2) return; // Bỏ qua nếu sheet không có dữ liệu
 
-      return {
-        name: row.Name,
-        category: row.Category, 
-        address: row.Address || "",
-        minPrice: Number(row.MinPrice) || 0,
-        maxPrice: Number(row.MaxPrice) || 0,
-        rating: Number(row.Rating) || 5,
-        description: row.Description || "",
-        tags: tagsArray,
-        images: imagesArray,
-        location: {
-          type: "Point",
-          coordinates: [Number(row.Lng) || 0, Number(row.Lat) || 0], 
-        },
-        time_order: Number(row.TimeOrder) || 1, 
-        duration_mins: Number(row.DurationMins) || 90,
-        price_level: Number(row.PriceLevel) || 1
-      };
+      // Hàng 0 chứa danh sách tiêu đề cột: ['Mã Cốt Lõi (ID)', 'Tên Địa Danh (name)', ...]
+      const headers = rows[0];
+
+      // 1. TỰ ĐỘNG PHÂN LOẠI CATEGORY DỰA TRÊN TÊN SHEET FILE MỚI
+      let currentCategory = "attraction";
+      if (
+        sheetName.toLowerCase().includes("attraction") ||
+        sheetName.includes("Di tích")
+      ) {
+        currentCategory = "attraction";
+      } else if (
+        sheetName.toLowerCase().includes("restaurant") ||
+        sheetName.includes("Ẩm thực")
+      ) {
+        currentCategory = "restaurant";
+      } else if (
+        sheetName.toLowerCase().includes("hotel") ||
+        sheetName.includes("Lưu trú")
+      ) {
+        currentCategory = "hotel";
+      } else if (
+        sheetName.toLowerCase().includes("entertainment") ||
+        sheetName.includes("Giải trí")
+      ) {
+        currentCategory = "entertainment";
+      }
+
+      // Duyệt qua các hàng dữ liệu từ hàng thứ 2 (Index 1) trở đi
+      for (let i = 1; i < rows.length; i++) {
+        const rowData = rows[i];
+        if (!rowData || rowData.length === 0) continue;
+
+        // Hàm helper tìm kiếm giá trị của ô dựa theo từ khóa nằm trong tiêu đề cột
+        const getValueByHeaderKeyword = (keyword) => {
+          const colIndex = headers.findIndex(
+            (h) =>
+              h && h.toString().toLowerCase().includes(keyword.toLowerCase()),
+          );
+          return colIndex !== -1 ? rowData[colIndex] : undefined;
+        };
+
+        // 2. BÓC TÁCH DỮ LIỆU CỦA BASE SCHEMA (DÙNG CHUNG)
+        const name =
+          getValueByHeaderKeyword("name") || getValueByHeaderKeyword("Tên");
+        if (!name) continue; // Bỏ qua hàng lỗi nếu không bóc tách được tên địa danh
+
+        // Trích xuất tọa độ địa lý (Xử lý an toàn: [Kinh độ - Lng, Vĩ độ - Lat])
+        const rawLng =
+          getValueByHeaderKeyword("longitude") ||
+          getValueByHeaderKeyword("Kinh độ") ||
+          getValueByHeaderKeyword("lng");
+        const rawLat =
+          getValueByHeaderKeyword("latitude") ||
+          getValueByHeaderKeyword("Vĩ độ") ||
+          getValueByHeaderKeyword("lat");
+        const lng = Number(rawLng) || 108.2272; // Tọa độ dự phòng: Trung tâm Đà Nẵng
+        const lat = Number(rawLat) || 16.0614;
+
+        // Trích xuất mảng từ khóa AI Tags từ cột 'Tags'
+        const rawTags =
+          getValueByHeaderKeyword("tags") ||
+          getValueByHeaderKeyword("Tags") ||
+          "";
+        const tagsArray = rawTags
+          ? rawTags
+              .toString()
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
+          : ["Văn hóa", "Khám phá"];
+
+        // 🌟 FIX CHỖ NÀY: TRÍCH XUẤT ẢNH TỪ EXCEL, KHÔNG CÓ MỚI LẤY MẶC ĐỊNH
+        const rawImage =
+          getValueByHeaderKeyword("imageUrl") ||
+          getValueByHeaderKeyword("image") ||
+          getValueByHeaderKeyword("ảnh") ||
+          getValueByHeaderKeyword("Hình ảnh");
+
+        const imagesArray =
+          rawImage && rawImage.toString().trim()
+            ? rawImage
+                .toString()
+                .split(",")
+                .map((img) => img.trim())
+                .filter(Boolean)
+            : ["https://images.unsplash.com/photo-1555939594-58d7cb561ad1"]; // Ảnh mặc định hệ thống
+
+        // Đóng gói cấu trúc Object dữ liệu nền tảng
+        let placeData = {
+          name: name.toString().trim(),
+          category: currentCategory,
+          address: (
+            getValueByHeaderKeyword("address") ||
+            getValueByHeaderKeyword("Địa chỉ") ||
+            "Đà Nẵng, Việt Nam"
+          )
+            .toString()
+            .trim(),
+          minPrice:
+            Number(
+              getValueByHeaderKeyword("minPrice") ||
+                getValueByHeaderKeyword("Giá Min"),
+            ) || 0,
+          maxPrice:
+            Number(
+              getValueByHeaderKeyword("maxPrice") ||
+                getValueByHeaderKeyword("Giá Max"),
+            ) || 0,
+          rating:
+            Number(
+              getValueByHeaderKeyword("rating") ||
+                getValueByHeaderKeyword("Đánh giá"),
+            ) || 5,
+          description: (
+            getValueByHeaderKeyword("description") ||
+            getValueByHeaderKeyword("Mô tả") ||
+            "Điểm đến văn hóa đặc sắc nằm trong hệ sinh thái di sản Danasoul."
+          )
+            .toString()
+            .trim(),
+          tags: tagsArray,
+          images: imagesArray, // 🌟 Gán mảng ảnh vừa bóc tách ở trên vào đây
+          location: {
+            type: "Point",
+            coordinates: [lng, lat], // GeoJSON chuẩn: [Kinh độ, Vĩ độ]
+          },
+        };
+
+        // 3. BÓC TÁCH DỮ LIỆU ĐẶC THÙ (DỰA VÀO DISCRIMINATOR CATEGORY)
+        if (currentCategory === "attraction") {
+          placeData.ticketPrice =
+            Number(
+              getValueByHeaderKeyword("ticketPrice") ||
+                getValueByHeaderKeyword("Giá Vé"),
+            ) || 0;
+          placeData.tourDuration =
+            Number(
+              getValueByHeaderKeyword("tourDuration") ||
+                getValueByHeaderKeyword("Thời Lượng"),
+            ) || 90;
+          placeData.historicalInfo = (
+            getValueByHeaderKeyword("historicalInfo") ||
+            getValueByHeaderKeyword("Thuyết Minh") ||
+            ""
+          )
+            .toString()
+            .trim();
+          placeData.rules = (
+            getValueByHeaderKeyword("rules") ||
+            getValueByHeaderKeyword("Nội Quy") ||
+            "Tuân thủ nội quy điểm tham quan."
+          )
+            .toString()
+            .trim();
+
+          const actRaw =
+            getValueByHeaderKeyword("activities") ||
+            getValueByHeaderKeyword("Hoạt Động") ||
+            "";
+          placeData.activities = actRaw
+            ? actRaw
+                .toString()
+                .split(",")
+                .map((a) => a.trim())
+                .filter(Boolean)
+            : [];
+        } else if (currentCategory === "restaurant") {
+          placeData.cuisineType = (
+            getValueByHeaderKeyword("cuisineType") ||
+            getValueByHeaderKeyword("Phân Loại") ||
+            "Đặc sản địa phương"
+          )
+            .toString()
+            .trim();
+          placeData.serviceType = (
+            getValueByHeaderKeyword("serviceType") ||
+            getValueByHeaderKeyword("Hình Thức") ||
+            "Gọi món"
+          )
+            .toString()
+            .trim();
+        } else if (currentCategory === "hotel") {
+          const amRaw =
+            getValueByHeaderKeyword("amenities") ||
+            getValueByHeaderKeyword("Tiện Nghi") ||
+            "";
+          placeData.amenities = amRaw
+            ? amRaw
+                .toString()
+                .split(",")
+                .map((a) => a.trim())
+                .filter(Boolean)
+            : ["Wifi miễn phí", "Điều hòa nhiệt độ"];
+        } else if (currentCategory === "entertainment") {
+          placeData.activityType = (
+            getValueByHeaderKeyword("activityType") ||
+            getValueByHeaderKeyword("Loại Hình") ||
+            "Vui chơi tổng hợp"
+          )
+            .toString()
+            .trim();
+          placeData.eventSchedule = (
+            getValueByHeaderKeyword("eventSchedule") ||
+            getValueByHeaderKeyword("Khung Giờ") ||
+            "Tự do"
+          )
+            .toString()
+            .trim();
+        }
+
+        allFormattedPlaces.push(placeData);
+      }
     });
 
-    const result = await Place.insertMany(formattedData); // Chú ý: Đảm bảo biến Model Place của ông đã được require trong file này
+    if (allFormattedPlaces.length === 0) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message:
+          "Không tìm thấy cấu trúc dữ liệu hợp lệ nào trong file Excel để nạp!",
+      });
+    }
 
-    fs.unlinkSync(req.file.path);
+    // 4. TIẾN HÀNH BULK INSERT VÀO MONGO DATABASE
+    const result = await Place.insertMany(allFormattedPlaces);
+
+    // Giải phóng file Excel tạm ra khỏi bộ nhớ máy chủ (thư mục uploads)
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
     return res.status(200).json({
       success: true,
-      message: `Đã nạp thành công ${result.length} địa điểm!`,
+      message: `Hệ sinh thái Danasoul đã nạp dữ liệu thành công ${result.length} địa điểm từ file Excel!`,
     });
-
   } catch (error) {
-    console.error("Lỗi Import Excel:", error);
+    console.error("Lỗi đồng bộ dữ liệu Excel:", error);
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
     return res.status(500).json({
       success: false,
-      message: "Lỗi hệ thống khi xử lý file Excel.",
+      message: "Gặp lỗi hệ thống khi bóc tách mảng cấu trúc Excel.",
+      error: error.message,
+    });
+  }
+};
+exports.deletePlace = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Tìm và xóa địa điểm theo ID
+    const deletedPlace = await Place.findByIdAndDelete(id);
+
+    // Nếu không tìm thấy địa điểm trong DB
+    if (!deletedPlace) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Không tìm thấy địa điểm này hoặc địa điểm đã bị xóa trước đó!",
+      });
+    }
+    try {
+      await Review.deleteMany({ place: id });
+    } catch (reviewErr) {
+      console.error("Lỗi khi dọn dẹp các review liên quan:", reviewErr.message);
+    }
+    return res.status(200).json({
+      success: true,
+      message: `Đã xóa thành công địa điểm "${deletedPlace.name}" và các dữ liệu liên quan khỏi hệ thống!`,
+    });
+  } catch (error) {
+    console.error("Lỗi hệ thống khi xóa địa điểm:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống máy chủ khi thực hiện thao tác xóa.",
       error: error.message,
     });
   }

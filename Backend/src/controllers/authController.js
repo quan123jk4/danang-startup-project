@@ -68,19 +68,19 @@ exports.verifyEmail = async (req, res) => {
   try {
     const { email, otp } = req.body;
     const user = await User.findOne({ email });
+
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy tài khoản!" });
     }
-    if (!user.isVerified) {
-      return res.status(403).json({
-        message: "Vui lòng xác thực email bằng OTP trước khi đăng nhập!",
-      });
-    }
+
+    // Đã xóa cái bẫy 403 ở đây!
+
     if (user.isVerified) {
       return res
         .status(400)
         .json({ message: "Tài khoản này đã được xác thực rồi!" });
     }
+
     if (user.verificationCode !== otp) {
       return res.status(400).json({ message: "Mã OTP không chính xác!" });
     }
@@ -90,10 +90,12 @@ exports.verifyEmail = async (req, res) => {
         .status(400)
         .json({ message: "Mã OTP đã hết hạn! Vui lòng yêu cầu gửi lại." });
     }
+
     user.isVerified = true;
     user.verificationCode = undefined;
     user.verificationCodeExpires = undefined;
     await user.save();
+
     res.status(200).json({
       message: "Xác thực tài khoản thành công! Bạn có thể đăng nhập.",
     });
@@ -101,7 +103,6 @@ exports.verifyEmail = async (req, res) => {
     res.status(500).json({ message: "Lỗi server", error: error.message });
   }
 };
-
 // Login
 exports.login = async (req, res) => {
   try {
