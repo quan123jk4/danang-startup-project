@@ -18,6 +18,7 @@ import HeritagePage from "./screens/user/HeritagePage";
 import ExplorePage from "./screens/user/ExplorePage";
 import PlaceDetailPage from "./screens/user/PlaceDetailPage";
 import MyTripsPage from "./screens/user/MyTripsPage";
+import HeritageDetailPage from "./screens/user/HeritageDetailPage";
 
 // === 3. IMPORT TRANG ADMIN ===
 import AdminHomePage from "./screens/admin/AdminHomePage";
@@ -42,6 +43,7 @@ function App() {
           <Route path="/ai-suggest" element={<AiSuggestPage />} />
           <Route path="/heritage-gallery" element={<HeritagePage />} />
           <Route path="/my-trips" element={<MyTripsPage />} />
+          <Route element={<HeritageDetailPage />} path="/heritage" />
 
           {/* ==========================================
               NHÓM 2: PRIVATE ROUTE (Phải đăng nhập mới xem được)

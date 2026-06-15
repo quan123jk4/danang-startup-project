@@ -15,7 +15,7 @@ import { faGoogle, faFacebookF } from "@fortawesome/free-brands-svg-icons";
 
 const Register = () => {
   const bgImage =
-    "https://w-vietnam.com/wp-content/uploads/2021/04/Ngu-Hanh-Son-marble-mountain.jpg";
+    "https://media.istockphoto.com/id/1357445596/vi/anh/c%E1%BA%A7u-r%E1%BB%93ng-%E1%BB%9F-th%C3%A0nh-ph%E1%BB%91-%C4%91%C3%A0-n%E1%BA%B5ng.jpg?s=612x612&w=0&k=20&c=H_3uhMhNr1kZvg78iOtTROncLKwbsYrffBAEIPpGX2g=";
   const navigate = useNavigate();
 
   // === 1. QUẢN LÝ TRẠNG THÁI (STATE) ===
@@ -98,13 +98,10 @@ const Register = () => {
 
     setLoading(true);
     try {
-      await axios.post(
-        "https://danasoul-ai-1.onrender.com/api/v1/auth/verify-email",
-        {
-          email: formData.email,
-          otp: otp,
-        },
-      );
+      await axios.post("http://localhost:5000/api/v1/auth/verify-email", {
+        email: formData.email,
+        otp: otp,
+      });
 
       // BỎ ALERT ĐI - Chuyển sang Màn hình thành công (Bước 3)
       setStep(3);

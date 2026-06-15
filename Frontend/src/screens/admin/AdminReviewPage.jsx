@@ -35,7 +35,7 @@ export default function AdminReviewPage() {
     onConfirm: null,
   });
 
-  const API_BASE_URL = "https://danasoul-project.onrender.com/api/v1/reviews";
+  const API_BASE_URL = "http://localhost:5000/api/v1/reviews";
 
   useEffect(() => {
     fetchReviews();

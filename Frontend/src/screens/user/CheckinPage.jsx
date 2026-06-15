@@ -112,7 +112,7 @@ const CheckinPage = () => {
       if (token) {
         try {
           const res = await fetch(
-            "http://localhost:5000/api/v1/users/profile",
+            "https://danasoul-project.onrender.com/api/v1/users/profile",
             {
               headers: { Authorization: `Bearer ${token}` },
             },

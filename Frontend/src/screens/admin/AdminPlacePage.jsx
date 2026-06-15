@@ -111,7 +111,7 @@ export default function AdminPlacePage() {
     onConfirm: null,
   });
 
-  const API_BASE_URL = "https://danasoul-project.onrender.com/api/v1/places";
+  const API_BASE_URL = "http://localhost:5000/api/v1/places";
 
   // ==========================================
   // FETCH DATA
